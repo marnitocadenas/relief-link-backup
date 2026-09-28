@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use App\Http\Requests\Api\RegisterRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AdminController extends Controller
@@ -88,32 +90,116 @@ class AdminController extends Controller
 
     public function storeUser(Request $r)
     {
-        $role = $r->input('role', 'donor');
-        $isAdminOrStaff = in_array($role, ['admin', 'staff'], true);
-        $d = $r->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
-            'password' => 'required|string|min:8',
-            'role' => 'required|in:donor,beneficiary,staff,admin',
-            'contact_number' => 'nullable|string|max:30|unique:users,contact_number',
-            'country' => 'nullable|string|max:100',
-            'campus_id' => $isAdminOrStaff ? 'required|string|max:50|unique:users,campus_id' : 'nullable|string|max:50',
-            'address' => 'nullable|string|max:255',
-            'valid_id_number' => $role === 'donor' ? 'required|string|max:50|unique:users,valid_id_number' : 'nullable|string|max:50',
-            'student_id_number' => $role === 'beneficiary' ? 'required|string|max:50|unique:users,student_id_number' : 'nullable|string|max:50',
-            'school_email' => $role === 'beneficiary' ? 'required|email|max:255' : 'nullable|email|max:255',
-            'department' => $role === 'beneficiary' ? 'required|string|max:255' : 'nullable|string|max:255',
-            'course' => $role === 'beneficiary' ? 'required|string|max:255' : 'nullable|string|max:255',
-            'year_level' => $role === 'beneficiary' ? 'required|string|max:50' : 'nullable|string|max:50',
-        ], [
-            'campus_id.required' => 'Campus ID Number is required for ' . ($role === 'admin' ? 'Administrator' : 'Staff') . ' accounts.',
-            'valid_id_number.required' => 'Valid ID Number is required for Donor accounts.',
+        $rawRole = strtolower(trim((string) ($r->input('account_type') ?: $r->input('role', ''))));
+        if ($rawRole === 'administrator') {
+            $rawRole = 'admin';
+        }
+
+        $r->merge([
+            'role' => $rawRole ?: null,
+            'account_type' => $rawRole ?: null,
         ]);
+
+        $role = $rawRole;
+        $isAdmin = $role === 'admin';
+        $isStaff = $role === 'staff';
+        $isAdminOrStaff = $isAdmin || $isStaff;
+        $isBeneficiary = $role === 'beneficiary';
+        $isDonor = $role === 'donor';
+
+        $rules = [
+            'role' => 'required|in:admin,staff,beneficiary,donor',
+            'account_type' => 'required|in:admin,staff,beneficiary,donor',
+            'first_name' => 'required|string|max:100',
+            'middle_name' => 'nullable|string|max:100',
+            'last_name' => 'required|string|max:100',
+            'password' => 'required|string|min:8|confirmed',
+        ];
+
+        if ($isAdminOrStaff) {
+            $rules['campus_id'] = 'required|string|max:50|unique:users,campus_id';
+            $rules['email'] = 'required|email|max:255|unique:users,email';
+            $rules['department'] = 'required|string|max:255';
+            $rules['contact_number'] = 'required|string|max:30|unique:users,contact_number';
+        } elseif ($isBeneficiary) {
+            $rules['student_id_number'] = ['required', 'string', 'max:9', 'regex:/^\d{2}-\d{6}$/', 'unique:users,student_id_number'];
+            $rules['email'] = 'required|email|max:255|unique:users,email';
+            $rules['school_email'] = 'nullable|email|max:255';
+            $rules['department'] = ['required', 'string', Rule::in(RegisterRequest::BENEFICIARY_DEPARTMENTS)];
+            $rules['course'] = ['required', 'string', function ($attribute, $value, $fail) use ($r) {
+                $dept = $r->input('department');
+                $allowed = RegisterRequest::DEPARTMENT_COURSES[$dept] ?? [];
+                if (!in_array($value, $allowed, true)) {
+                    $fail('The selected course does not belong to the selected department. Please choose a valid course.');
+                }
+            }];
+            $rules['year_level'] = ['required', 'string', Rule::in(RegisterRequest::BENEFICIARY_YEAR_LEVELS)];
+            $rules['contact_number'] = ['required', 'string', 'regex:/^09[0-9]{9}$/', 'unique:users,contact_number'];
+        } elseif ($isDonor) {
+            $rules['email'] = 'required|email|max:255|unique:users,email';
+            $rules['contact_number'] = 'required|string|max:30|unique:users,contact_number';
+            $rules['country'] = 'required|string|max:100';
+            $rules['country_code'] = 'nullable|string|size:2';
+            $rules['address_line_1'] = 'required|string|max:255';
+            $rules['state_province_region'] = 'nullable|string|max:255';
+            $rules['city_municipality'] = 'nullable|string|max:255';
+            $rules['district_local_area'] = 'nullable|string|max:255';
+            $rules['postal_zip_code'] = 'nullable|string|max:50';
+            $rules['valid_id_type'] = 'required|string|max:100';
+            $rules['valid_id_number'] = 'required|string|max:50|unique:users,valid_id_number';
+        }
+
+        $messages = [
+            'role.required' => 'Please select an account type.',
+            'role.in' => 'Please select a valid account type.',
+            'account_type.required' => 'Please select an account type.',
+            'account_type.in' => 'Please select a valid account type.',
+            'first_name.required' => 'First Name is required.',
+            'last_name.required' => 'Last Name is required.',
+            'email.required' => 'Email Address is required.',
+            'email.unique' => 'This email address is already registered.',
+            'campus_id.required' => ($isAdmin ? 'Administrator ID / Campus ID Number' : 'Staff ID / Campus ID Number') . ' is required.',
+            'campus_id.unique' => 'This Campus ID number is already taken.',
+            'student_id_number.required' => 'Student ID Number is required.',
+            'student_id_number.regex' => 'Please enter a valid Student ID Number in the format YY-###### (e.g., 21-010956).',
+            'student_id_number.unique' => 'This Student ID Number is already registered.',
+            'department.required' => 'Please select a department.',
+            'department.in' => 'Please select a valid department.',
+            'course.required' => 'Please select a course.',
+            'course.in' => 'Please select a valid course.',
+            'year_level.required' => 'Please select a year level.',
+            'year_level.in' => 'Please select a valid year level.',
+            'contact_number.required' => 'Contact Number is required.',
+            'contact_number.regex' => 'Contact Number must begin with 09 and contain exactly 11 digits.',
+            'contact_number.unique' => 'This Contact Number is already registered.',
+            'country.required' => 'Country / Region is required.',
+            'address_line_1.required' => 'Address Line 1 is required.',
+            'valid_id_type.required' => 'Valid ID Type is required.',
+            'valid_id_number.required' => 'Valid ID Number is required.',
+            'valid_id_number.unique' => 'This Valid ID Number is already taken.',
+            'password.required' => 'Password is required.',
+            'password.confirmed' => 'Passwords do not match.',
+        ];
+
+        $d = $r->validate($rules, $messages);
+
+        if (empty($d['name']) && (!empty($d['first_name']) || !empty($d['last_name']))) {
+            $d['name'] = trim(($d['first_name'] ?? '') . (!empty($d['middle_name']) ? ' ' . $d['middle_name'] : '') . ' ' . ($d['last_name'] ?? ''));
+        }
 
         if ($role === 'beneficiary') {
             $d['campus_id'] = null;
             $d['address'] = null;
+            $d['address_line_1'] = null;
+            $d['state_province_region'] = null;
+            $d['city_municipality'] = null;
+            $d['district_local_area'] = null;
+            $d['postal_zip_code'] = null;
+            $d['valid_id_type'] = null;
             $d['valid_id_number'] = null;
+            $d['country'] = null;
+            $d['country_code'] = null;
+            $d['school_email'] = $d['email'];
         } elseif ($role === 'donor') {
             $d['campus_id'] = null;
             $d['student_id_number'] = null;
@@ -121,16 +207,35 @@ class AdminController extends Controller
             $d['department'] = null;
             $d['course'] = null;
             $d['year_level'] = null;
+            $d['country_code'] = RegisterRequest::resolveCountryIso($d['country'] ?? '', $r->input('country_code'));
+            if (!empty($d['address_line_1'])) {
+                $d['address'] = implode(', ', array_filter([
+                    $d['address_line_1'],
+                    $d['district_local_area'] ?? null,
+                    $d['city_municipality'] ?? null,
+                    $d['state_province_region'] ?? null,
+                    $d['postal_zip_code'] ?? null,
+                    $d['country'] ?? null,
+                ]));
+            }
         } elseif ($isAdminOrStaff) {
             $d['address'] = null;
+            $d['address_line_1'] = null;
+            $d['state_province_region'] = null;
+            $d['city_municipality'] = null;
+            $d['district_local_area'] = null;
+            $d['postal_zip_code'] = null;
+            $d['valid_id_type'] = null;
             $d['valid_id_number'] = null;
             $d['student_id_number'] = null;
             $d['school_email'] = null;
-            $d['department'] = null;
             $d['course'] = null;
             $d['year_level'] = null;
+            $d['country'] = null;
+            $d['country_code'] = null;
         }
 
+        $d['account_type'] = $role;
         $d['password'] = Hash::make($d['password']);
         $d['email_verified_at'] = now();
         $u = User::create($d);
@@ -140,48 +245,105 @@ class AdminController extends Controller
 
     public function updateUser(Request $r, User $user)
     {
-        $role = $r->input('role', $user->role);
+        $rawRole = strtolower(trim((string) ($r->input('account_type') ?: $r->input('role', $user->role))));
+        if ($rawRole === 'administrator') {
+            $rawRole = 'admin';
+        }
+        $role = $rawRole;
         $isAdminOrStaff = in_array($role, ['admin', 'staff'], true);
+
         $d = $r->validate([
-            'name' => 'sometimes|required|string|max:255',
+            'name' => 'sometimes|nullable|string|max:255',
+            'first_name' => 'nullable|string|max:100',
+            'middle_name' => 'nullable|string|max:100',
+            'last_name' => 'nullable|string|max:100',
             'email' => 'sometimes|required|email|max:255|unique:users,email,' . $user->id,
             'password' => 'nullable|string|min:8',
             'role' => 'sometimes|required|in:donor,beneficiary,staff,admin',
+            'account_type' => 'nullable|in:donor,beneficiary,staff,admin',
             'contact_number' => 'nullable|string|max:30|unique:users,contact_number,' . $user->id,
             'country' => 'nullable|string|max:100',
-            'campus_id' => $isAdminOrStaff ? 'required|string|max:50|unique:users,campus_id,' . $user->id : 'nullable|string|max:50|unique:users,campus_id,' . $user->id,
+            'country_code' => 'nullable|string|size:2',
+            'campus_id' => 'sometimes|nullable|string|max:50|unique:users,campus_id,' . $user->id,
             'address' => 'nullable|string|max:255',
-            'valid_id_number' => $role === 'donor' ? 'required|string|max:50|unique:users,valid_id_number,' . $user->id : 'nullable|string|max:50|unique:users,valid_id_number,' . $user->id,
-            'student_id_number' => 'nullable|string|max:50|unique:users,student_id_number,' . $user->id,
+            'address_line_1' => 'nullable|string|max:255',
+            'state_province_region' => 'nullable|string|max:255',
+            'city_municipality' => 'nullable|string|max:255',
+            'district_local_area' => 'nullable|string|max:255',
+            'postal_zip_code' => 'nullable|string|max:50',
+            'valid_id_type' => 'nullable|string|max:100',
+            'valid_id_number' => $role === 'donor' ? 'nullable|string|max:50|unique:users,valid_id_number,' . $user->id : 'nullable|string|max:50|unique:users,valid_id_number,' . $user->id,
+            'student_id_number' => ['nullable', 'string', 'max:50', 'regex:/^\d{2}-\d{6}$/', 'unique:users,student_id_number,' . $user->id],
             'school_email' => 'nullable|email|max:255',
-            'department' => 'nullable|string|max:255',
-            'course' => 'nullable|string|max:255',
-            'year_level' => 'nullable|string|max:50',
-        ], [
-            'campus_id.required' => 'Campus ID Number is required for ' . ($role === 'admin' ? 'Administrator' : 'Staff') . ' accounts.',
-            'valid_id_number.required' => 'Valid ID Number is required for Donor accounts.',
+            'department' => $role === 'beneficiary' ? ['nullable', 'string', Rule::in(RegisterRequest::BENEFICIARY_DEPARTMENTS)] : 'nullable|string|max:255',
+            'course' => ['nullable', 'string', function ($attribute, $value, $fail) use ($r, $user, $role) {
+                if (!empty($value) && $role === 'beneficiary') {
+                    $dept = $r->input('department', $user->department);
+                    $allowed = RegisterRequest::DEPARTMENT_COURSES[$dept] ?? [];
+                    if (!in_array($value, $allowed, true)) {
+                        $fail('The selected course does not belong to the selected department. Please choose a valid course.');
+                    }
+                }
+            }],
+            'year_level' => $role === 'beneficiary' ? ['nullable', 'string', Rule::in(RegisterRequest::BENEFICIARY_YEAR_LEVELS)] : 'nullable|string|max:255',
         ]);
 
-        if (array_key_exists('role', $d)) {
-            if ($d['role'] === 'beneficiary') {
+        if (empty($d['name']) && (!empty($d['first_name']) || !empty($d['last_name']))) {
+            $d['name'] = trim(($d['first_name'] ?? '') . (!empty($d['middle_name']) ? ' ' . $d['middle_name'] : '') . ' ' . ($d['last_name'] ?? ''));
+        }
+
+        if (array_key_exists('role', $d) || array_key_exists('account_type', $d)) {
+            $effectiveRole = $d['role'] ?? ($d['account_type'] ?? $role);
+            $d['role'] = $effectiveRole;
+            $d['account_type'] = $effectiveRole;
+
+            if ($effectiveRole === 'beneficiary') {
                 $d['campus_id'] = null;
                 $d['address'] = null;
+                $d['address_line_1'] = null;
+                $d['state_province_region'] = null;
+                $d['city_municipality'] = null;
+                $d['district_local_area'] = null;
+                $d['postal_zip_code'] = null;
+                $d['valid_id_type'] = null;
                 $d['valid_id_number'] = null;
-            } elseif ($d['role'] === 'donor') {
+                $d['country'] = null;
+                $d['country_code'] = null;
+            } elseif ($effectiveRole === 'donor') {
                 $d['campus_id'] = null;
                 $d['student_id_number'] = null;
                 $d['school_email'] = null;
                 $d['department'] = null;
                 $d['course'] = null;
                 $d['year_level'] = null;
-            } elseif (in_array($d['role'], ['admin', 'staff'], true)) {
+                if (isset($d['country'])) {
+                    $d['country_code'] = RegisterRequest::resolveCountryIso($d['country'], $r->input('country_code'));
+                }
+                if (isset($d['address_line_1'])) {
+                    $d['address'] = implode(', ', array_filter([
+                        $d['address_line_1'],
+                        $d['district_local_area'] ?? $user->district_local_area,
+                        $d['city_municipality'] ?? $user->city_municipality,
+                        $d['state_province_region'] ?? $user->state_province_region,
+                        $d['postal_zip_code'] ?? $user->postal_zip_code,
+                        $d['country'] ?? $user->country,
+                    ]));
+                }
+            } elseif (in_array($effectiveRole, ['admin', 'staff'], true)) {
                 $d['address'] = null;
+                $d['address_line_1'] = null;
+                $d['state_province_region'] = null;
+                $d['city_municipality'] = null;
+                $d['district_local_area'] = null;
+                $d['postal_zip_code'] = null;
+                $d['valid_id_type'] = null;
                 $d['valid_id_number'] = null;
                 $d['student_id_number'] = null;
                 $d['school_email'] = null;
-                $d['department'] = null;
                 $d['course'] = null;
                 $d['year_level'] = null;
+                $d['country'] = null;
+                $d['country_code'] = null;
             }
         }
 

@@ -19,26 +19,68 @@ class ReliefLinkWorkflowTest extends TestCase
     {
         $password = 'Strong!Pass123';
 
-        foreach ([
-            ['Donor User', 'donor@example.test', 'donor', 'DONOR-001', '+639171234567'],
-            ['Beneficiary User', 'beneficiary@example.test', 'beneficiary', 'BEN-001', '+639171234568'],
-        ] as [$name, $email, $role, $campusId, $contactNumber]) {
-            $this->postJson('/api/register', compact('name', 'email', 'role') + [
-                'campus_id' => $campusId,
-                'contact_number' => $contactNumber,
-                'country' => 'Philippines',
-                'country_code' => 'PH',
-                'password' => $password,
-                'password_confirmation' => $password,
-            ])->assertCreated();
+        // 1. Donor Registration
+        $this->postJson('/api/register', [
+            'role' => 'donor',
+            'first_name' => 'Donor',
+            'middle_name' => 'Middle',
+            'last_name' => 'User',
+            'email' => 'donor@example.test',
+            'contact_number' => '+639171234567',
+            'country' => 'Philippines',
+            'country_code' => 'PH',
+            'address_line_1' => '123 Main Street',
+            'state_province_region' => 'Metro Manila',
+            'city_municipality' => 'Makati City',
+            'district_local_area' => 'Bel-Air',
+            'postal_zip_code' => '1209',
+            'valid_id_type' => 'Driver\'s License',
+            'valid_id_number' => 'N01-12-345678',
+            'password' => $password,
+            'password_confirmation' => $password,
+        ])->assertCreated();
 
-            $this->assertDatabaseHas('users', compact('email', 'role') + [
-                'campus_id' => $campusId,
-                'contact_number' => $contactNumber,
-                'country' => 'Philippines',
-                'country_code' => 'PH',
-            ]);
-        }
+        $this->assertDatabaseHas('users', [
+            'email' => 'donor@example.test',
+            'role' => 'donor',
+            'first_name' => 'Donor',
+            'last_name' => 'User',
+            'contact_number' => '+639171234567',
+            'country' => 'Philippines',
+            'address_line_1' => '123 Main Street',
+            'valid_id_type' => 'Driver\'s License',
+            'valid_id_number' => 'N01-12-345678',
+        ]);
+
+        // 2. Beneficiary Registration
+        $this->postJson('/api/register', [
+            'role' => 'beneficiary',
+            'first_name' => 'Beneficiary',
+            'last_name' => 'User',
+            'school_email' => 'beneficiary@example.test',
+            'student_id_number' => '24-000123',
+            'department' => 'College of Computer Studies',
+            'course' => 'Bachelor of Science in Information Technology',
+            'year_level' => '3rd Year',
+            'contact_number' => '09171234568',
+            'country' => 'Philippines',
+            'country_code' => 'PH',
+            'password' => $password,
+            'password_confirmation' => $password,
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'beneficiary@example.test',
+            'school_email' => 'beneficiary@example.test',
+            'role' => 'beneficiary',
+            'first_name' => 'Beneficiary',
+            'last_name' => 'User',
+            'student_id_number' => '24-000123',
+            'department' => 'College of Computer Studies',
+            'course' => 'Bachelor of Science in Information Technology',
+            'year_level' => '3rd Year',
+            'contact_number' => '09171234568',
+        ]);
     }
 
     public function test_core_relief_workflow_updates_all_connected_records(): void
@@ -427,89 +469,136 @@ class ReliefLinkWorkflowTest extends TestCase
     {
         $password = 'Strong!Pass123';
 
-        // 1. Empty Full Name
+        // 1. Missing / Unselected Account Type
         $this->postJson('/api/register', [
-            'name' => '',
-            'email' => 'empty-name@example.test',
-            'role' => 'donor',
-            'campus_id' => 'STU-123',
+            'first_name' => 'No',
+            'last_name' => 'Role',
+            'email' => 'norole@example.test',
             'contact_number' => '+639171234567',
             'password' => $password,
             'password_confirmation' => $password,
-        ])->assertUnprocessable()->assertJsonValidationErrors('name');
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('role')
+            ->assertJsonFragment(['role' => ['Please select an account type.']]);
 
-        // 2. Invalid Role (e.g. attempting to self-register as admin)
+        // 2. Invalid Role / Attempting to register as admin or staff
         $this->postJson('/api/register', [
-            'name' => 'Admin Exploiter',
-            'email' => 'admin-exploit@example.test',
             'role' => 'admin',
-            'campus_id' => 'ADMIN-001',
+            'first_name' => 'Admin',
+            'last_name' => 'Exploiter',
+            'email' => 'admin-exploit@example.test',
             'contact_number' => '+639171234567',
             'password' => $password,
             'password_confirmation' => $password,
         ])->assertUnprocessable()->assertJsonValidationErrors('role');
 
-        // 3. Invalid Email Format
         $this->postJson('/api/register', [
-            'name' => 'Bad Email User',
-            'email' => 'not-an-email',
+            'role' => 'staff',
+            'first_name' => 'Staff',
+            'last_name' => 'Exploiter',
+            'email' => 'staff-exploit@example.test',
+            'contact_number' => '+639171234567',
+            'password' => $password,
+            'password_confirmation' => $password,
+        ])->assertUnprocessable()->assertJsonValidationErrors('role');
+
+        // 3. Beneficiary Missing Required Fields
+        $this->postJson('/api/register', [
+            'role' => 'beneficiary',
+            'first_name' => 'Incomplete',
+            'last_name' => 'Beneficiary',
+            'school_email' => 'incomplete@tmc.edu.ph',
+            'contact_number' => '+639171234567',
+            'password' => $password,
+            'password_confirmation' => $password,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['student_id_number', 'department', 'course', 'year_level']);
+
+        // 4. Donor Missing Required Fields
+        $this->postJson('/api/register', [
             'role' => 'donor',
-            'campus_id' => 'STU-123',
+            'first_name' => 'Incomplete',
+            'last_name' => 'Donor',
+            'email' => 'incomplete-donor@example.test',
+            'contact_number' => '+639171234567',
+            'password' => $password,
+            'password_confirmation' => $password,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['address_line_1', 'valid_id_type']);
+
+        // 5. Invalid Email Format
+        $this->postJson('/api/register', [
+            'role' => 'donor',
+            'first_name' => 'Bad',
+            'last_name' => 'Email',
+            'email' => 'not-an-email',
+            'address_line_1' => '123 Test St',
+            'valid_id_type' => 'Passport',
             'contact_number' => '+639171234567',
             'password' => $password,
             'password_confirmation' => $password,
         ])->assertUnprocessable()->assertJsonValidationErrors('email');
 
-        // 4. Duplicate Email
+        // 6. Duplicate Email
         User::factory()->create(['email' => 'existing@example.test']);
         $this->postJson('/api/register', [
-            'name' => 'Duplicate User',
-            'email' => 'existing@example.test',
             'role' => 'donor',
-            'campus_id' => 'STU-124',
+            'first_name' => 'Duplicate',
+            'last_name' => 'User',
+            'email' => 'existing@example.test',
+            'address_line_1' => '123 Test St',
+            'valid_id_type' => 'Passport',
             'contact_number' => '+639171234567',
             'password' => $password,
             'password_confirmation' => $password,
         ])->assertUnprocessable()->assertJsonValidationErrors('email');
 
-        // 5. Password Mismatch
+        // 7. Password Mismatch
         $this->postJson('/api/register', [
-            'name' => 'Mismatch User',
-            'email' => 'mismatch@example.test',
             'role' => 'donor',
-            'campus_id' => 'STU-125',
+            'first_name' => 'Mismatch',
+            'last_name' => 'User',
+            'email' => 'mismatch@example.test',
+            'address_line_1' => '123 Test St',
+            'valid_id_type' => 'Passport',
             'contact_number' => '+639171234567',
             'password' => 'Strong!Pass123',
             'password_confirmation' => 'Different!Pass123',
         ])->assertUnprocessable()->assertJsonValidationErrors('password');
 
-        // 6. Weak Password (missing special character)
+        // 8. Weak Password (missing special character)
         $this->postJson('/api/register', [
-            'name' => 'Weak Pass User',
-            'email' => 'weakpass@example.test',
             'role' => 'donor',
-            'campus_id' => 'STU-126',
+            'first_name' => 'Weak',
+            'last_name' => 'Pass',
+            'email' => 'weakpass@example.test',
+            'address_line_1' => '123 Test St',
+            'valid_id_type' => 'Passport',
             'contact_number' => '+639171234567',
             'password' => 'PlainPassword123',
             'password_confirmation' => 'PlainPassword123',
         ])->assertUnprocessable()->assertJsonValidationErrors('password');
 
-        // 7. Incomplete / Invalid Contact Numbers
+        // 9. Incomplete / Invalid Contact Numbers
         $this->postJson('/api/register', [
-            'name' => 'Short Phone User',
-            'email' => 'shortphone@example.test',
             'role' => 'donor',
-            'campus_id' => 'STU-127',
+            'first_name' => 'Short',
+            'last_name' => 'Phone',
+            'email' => 'shortphone@example.test',
+            'address_line_1' => '123 Test St',
+            'valid_id_type' => 'Passport',
             'contact_number' => '+63917',
             'password' => $password,
             'password_confirmation' => $password,
         ])->assertUnprocessable()->assertJsonValidationErrors('contact_number');
 
         $this->postJson('/api/register', [
-            'name' => 'Invalid Phone User',
-            'email' => 'invalidphone@example.test',
             'role' => 'donor',
-            'campus_id' => 'STU-128',
+            'first_name' => 'Invalid',
+            'last_name' => 'Phone',
+            'email' => 'invalidphone@example.test',
+            'address_line_1' => '123 Test St',
+            'valid_id_type' => 'Passport',
             'contact_number' => '12345',
             'password' => $password,
             'password_confirmation' => $password,
@@ -518,60 +607,87 @@ class ReliefLinkWorkflowTest extends TestCase
 
     public function test_end_to_end_registration_to_profile_to_admin_user_management_flow(): void
     {
-        // 1. Create Account / Registration
+        // 1. Create Account / Registration for Beneficiary (with middle name)
         $regPassword = 'Secure!PassWord2026';
         $regResponse = $this->postJson('/api/register', [
-            'name' => 'John Doe',
-            'email' => 'john.doe@example.test',
             'role' => 'beneficiary',
-            'campus_id' => '2024-019852',
-            'contact_number' => '+639123456789',
+            'first_name' => 'John',
+            'middle_name' => 'Alexander',
+            'last_name' => 'Doe',
+            'school_email' => 'john.doe@tmc.edu.ph',
+            'student_id_number' => '24-019852',
+            'department' => 'College of Computer Studies',
+            'course' => 'Bachelor of Science in Information Technology',
+            'year_level' => '3rd Year',
+            'contact_number' => '09123456789',
+            'country' => 'Philippines',
+            'country_code' => 'PH',
             'password' => $regPassword,
             'password_confirmation' => $regPassword,
         ]);
 
         $regResponse->assertCreated()
-            ->assertJsonPath('user.name', 'John Doe')
-            ->assertJsonPath('user.email', 'john.doe@example.test')
+            ->assertJsonPath('user.name', 'John Alexander Doe')
+            ->assertJsonPath('user.first_name', 'John')
+            ->assertJsonPath('user.middle_name', 'Alexander')
+            ->assertJsonPath('user.last_name', 'Doe')
+            ->assertJsonPath('user.email', 'john.doe@tmc.edu.ph')
             ->assertJsonPath('user.role', 'beneficiary')
-            ->assertJsonPath('user.campus_id', '2024-019852')
-            ->assertJsonPath('user.contact_number', '+639123456789');
+            ->assertJsonPath('user.account_type', 'beneficiary')
+            ->assertJsonPath('user.student_id_number', '24-019852')
+            ->assertJsonPath('user.department', 'College of Computer Studies')
+            ->assertJsonPath('user.course', 'Bachelor of Science in Information Technology')
+            ->assertJsonPath('user.year_level', '3rd Year')
+            ->assertJsonPath('user.contact_number', '09123456789');
 
-        $user = User::where('email', 'john.doe@example.test')->firstOrFail();
-        $this->assertSame('John Doe', $user->name);
+        $user = User::where('email', 'john.doe@tmc.edu.ph')->firstOrFail();
+        $this->assertSame('John Alexander Doe', $user->name);
         $this->assertSame('beneficiary', $user->role);
-        $this->assertSame('2024-019852', $user->campus_id);
-        $this->assertSame('+639123456789', $user->contact_number);
+        $this->assertSame('24-019852', $user->student_id_number);
+        $this->assertSame('09123456789', $user->contact_number);
         $this->assertTrue(\Illuminate\Support\Facades\Hash::check($regPassword, $user->password));
 
         // 2. Beneficiary Profile Retrieval
         Sanctum::actingAs($user);
         $profileResponse = $this->getJson('/api/user');
         $profileResponse->assertOk()
-            ->assertJsonPath('data.name', 'John Doe')
-            ->assertJsonPath('data.email', 'john.doe@example.test')
+            ->assertJsonPath('data.name', 'John Alexander Doe')
+            ->assertJsonPath('data.first_name', 'John')
+            ->assertJsonPath('data.middle_name', 'Alexander')
+            ->assertJsonPath('data.last_name', 'Doe')
+            ->assertJsonPath('data.email', 'john.doe@tmc.edu.ph')
             ->assertJsonPath('data.role', 'beneficiary')
-            ->assertJsonPath('data.campus_id', '2024-019852')
-            ->assertJsonPath('data.contact_number', '+639123456789');
+            ->assertJsonPath('data.account_type', 'beneficiary')
+            ->assertJsonPath('data.student_id_number', '24-019852')
+            ->assertJsonPath('data.department', 'College of Computer Studies')
+            ->assertJsonPath('data.course', 'Bachelor of Science in Information Technology')
+            ->assertJsonPath('data.year_level', '3rd Year')
+            ->assertJsonPath('data.contact_number', '09123456789');
 
         // 3. Beneficiary Profile Update
         $updateProfileResponse = $this->postJson('/api/profile', [
+            'first_name' => 'John',
+            'middle_name' => 'A.',
+            'last_name' => 'Doe',
             'name' => 'John A. Doe',
-            'email' => 'john.doe@example.test',
-            'contact_number' => '+639998887777',
-            'campus_id' => '2024-019852-B',
+            'email' => 'john.doe@tmc.edu.ph',
+            'contact_number' => '09998887777',
+            'department' => 'College of Computer Studies',
+            'course' => 'Bachelor of Science in Information Technology',
+            'year_level' => '3rd Year',
+            'student_id_number' => '24-019853',
         ]);
 
         $updateProfileResponse->assertOk()
             ->assertJsonPath('data.name', 'John A. Doe')
-            ->assertJsonPath('data.contact_number', '+639998887777')
-            ->assertJsonPath('data.campus_id', '2024-019852-B');
+            ->assertJsonPath('data.contact_number', '09998887777')
+            ->assertJsonPath('data.student_id_number', '24-019853');
 
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
             'name' => 'John A. Doe',
-            'contact_number' => '+639998887777',
-            'campus_id' => '2024-019852-B',
+            'contact_number' => '09998887777',
+            'student_id_number' => '24-019853',
         ]);
 
         // 4. Admin User Management View
@@ -583,41 +699,50 @@ class ReliefLinkWorkflowTest extends TestCase
         $beneficiaryInList = collect($adminUsersResponse->json('data'))->firstWhere('id', $user->id);
         $this->assertNotNull($beneficiaryInList);
         $this->assertSame('John A. Doe', $beneficiaryInList['name']);
-        $this->assertSame('john.doe@example.test', $beneficiaryInList['email']);
+        $this->assertSame('john.doe@tmc.edu.ph', $beneficiaryInList['email']);
         $this->assertSame('beneficiary', $beneficiaryInList['role']);
-        $this->assertSame('2024-019852-B', $beneficiaryInList['campus_id']);
-        $this->assertSame('+639998887777', $beneficiaryInList['contact_number']);
+        $this->assertSame('24-019853', $beneficiaryInList['student_id_number']);
+        $this->assertSame('09998887777', $beneficiaryInList['contact_number']);
 
         // 5. Admin updates user record
         $this->patchJson('/api/admin/users/' . $user->id, [
             'name' => 'John A. Doe Jr.',
-            'contact_number' => '+639112223344',
-            'campus_id' => '2024-019852-C',
+            'contact_number' => '09112223344',
+            'department' => 'College of Computer Studies',
+            'course' => 'Bachelor of Science in Information Technology',
+            'year_level' => '3rd Year',
+            'student_id_number' => '24-019854',
         ])->assertOk()
             ->assertJsonPath('data.name', 'John A. Doe Jr.')
-            ->assertJsonPath('data.contact_number', '+639112223344')
-            ->assertJsonPath('data.campus_id', '2024-019852-C');
+            ->assertJsonPath('data.contact_number', '09112223344')
+            ->assertJsonPath('data.student_id_number', '24-019854');
 
         // 6. Beneficiary checks Profile again (Single Source of Truth)
         Sanctum::actingAs($user->fresh());
         $this->getJson('/api/user')
             ->assertOk()
             ->assertJsonPath('data.name', 'John A. Doe Jr.')
-            ->assertJsonPath('data.contact_number', '+639112223344')
-            ->assertJsonPath('data.campus_id', '2024-019852-C');
+            ->assertJsonPath('data.contact_number', '09112223344')
+            ->assertJsonPath('data.student_id_number', '24-019854');
     }
 
     public function test_international_phone_number_registration_and_validation(): void
     {
         $password = 'Secure!PassWord2026';
 
-        // 1. Valid International Registration: United Kingdom
+        // 1. Valid International Registration: United Kingdom Donor
         $ukRes = $this->postJson('/api/register', [
-            'name' => 'UK Donor',
-            'email' => 'uk.donor@example.test',
             'role' => 'donor',
+            'first_name' => 'UK',
+            'last_name' => 'Donor',
+            'email' => 'uk.donor@example.test',
             'country' => 'United Kingdom',
-            'campus_id' => 'INT-UK-001',
+            'country_code' => 'GB',
+            'address_line_1' => '10 Downing Street',
+            'city_municipality' => 'London',
+            'postal_zip_code' => 'SW1A 2AA',
+            'valid_id_type' => 'Passport',
+            'valid_id_number' => 'UK998877',
             'contact_number' => '+447911123456',
             'password' => $password,
             'password_confirmation' => $password,
@@ -625,13 +750,19 @@ class ReliefLinkWorkflowTest extends TestCase
         $ukRes->assertCreated()
             ->assertJsonPath('user.contact_number', '+447911123456');
 
-        // 2. Valid International Registration: Singapore
+        // 2. Valid International Registration: Singapore Donor
         $sgRes = $this->postJson('/api/register', [
-            'name' => 'SG Donor',
-            'email' => 'sg.donor@example.test',
             'role' => 'donor',
+            'first_name' => 'SG',
+            'last_name' => 'Donor',
+            'email' => 'sg.donor@example.test',
             'country' => 'Singapore',
-            'campus_id' => 'INT-SG-001',
+            'country_code' => 'SG',
+            'address_line_1' => '1 Marina Boulevard',
+            'city_municipality' => 'Singapore',
+            'postal_zip_code' => '018989',
+            'valid_id_type' => 'National ID',
+            'valid_id_number' => 'S1234567A',
             'contact_number' => '+6581234567',
             'password' => $password,
             'password_confirmation' => $password,
@@ -639,31 +770,41 @@ class ReliefLinkWorkflowTest extends TestCase
         $sgRes->assertCreated()
             ->assertJsonPath('user.contact_number', '+6581234567');
 
-        // 3. National number with leading zero auto-normalized to E.164
+        // 3. National number with leading zero auto-normalized to raw 09 format for PH Beneficiary
         $phRes = $this->postJson('/api/register', [
-            'name' => 'PH Student',
-            'email' => 'ph.student@example.test',
             'role' => 'beneficiary',
-            'campus_id' => '2024-998877',
+            'first_name' => 'PH',
+            'last_name' => 'Student',
+            'school_email' => 'ph.student@tmc.edu.ph',
+            'student_id_number' => '24-998877',
+            'department' => 'College of Arts and Sciences',
+            'course' => 'Bachelor of Arts in Communication',
+            'year_level' => '1st Year',
             'contact_number' => '09171234567',
+            'country' => 'Philippines',
+            'country_code' => 'PH',
             'password' => $password,
             'password_confirmation' => $password,
         ]);
         $phRes->assertCreated()
-            ->assertJsonPath('user.contact_number', '+639171234567');
+            ->assertJsonPath('user.contact_number', '09171234567');
 
         // 4. Incomplete Singapore number (only 4 digits) -> rejected
         $this->postJson('/api/register', [
-            'name' => 'Incomplete SG',
-            'email' => 'incompletesg@example.test',
             'role' => 'donor',
+            'first_name' => 'Incomplete',
+            'last_name' => 'SG',
+            'email' => 'incompletesg@example.test',
             'country' => 'Singapore',
-            'campus_id' => 'INT-SG-002',
+            'country_code' => 'SG',
+            'address_line_1' => '1 Marina Boulevard',
+            'valid_id_type' => 'Passport',
+            'valid_id_number' => 'S7654321B',
             'contact_number' => '+658123',
             'password' => $password,
             'password_confirmation' => $password,
         ])->assertUnprocessable()
             ->assertJsonValidationErrors('contact_number')
-            ->assertJsonFragment(['contact_number' => ['Please enter a valid mobile number for the selected country.']]);
+            ->assertJsonFragment(['contact_number' => ['Please enter a valid contact number for the selected Country / Region.']]);
     }
 }

@@ -1,35 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { isValidPhoneNumber, validatePhoneNumberLength, AsYouType, parsePhoneNumber } from 'libphonenumber-js';
+import { isValidPhoneNumber, isPossiblePhoneNumber, validatePhoneNumberLength, AsYouType, parsePhoneNumber } from 'libphonenumber-js';
+import { COUNTRY_LIST, findCountry } from './countries';
 
-export const COUNTRY_LIST = [
-    { code: 'PH', name: 'Philippines', dialCode: '+63', flag: '🇵🇭', placeholder: '917 123 4567', minDigits: 10, maxDigits: 10 },
-    { code: 'US', name: 'United States', dialCode: '+1', flag: '🇺🇸', placeholder: '202 555 0123', minDigits: 10, maxDigits: 10 },
-    { code: 'CA', name: 'Canada', dialCode: '+1', flag: '🇨🇦', placeholder: '416 555 0123', minDigits: 10, maxDigits: 10 },
-    { code: 'GB', name: 'United Kingdom', dialCode: '+44', flag: '🇬🇧', placeholder: '7911 123456', minDigits: 10, maxDigits: 10 },
-    { code: 'AU', name: 'Australia', dialCode: '+61', flag: '🇦🇺', placeholder: '412 345 678', minDigits: 9, maxDigits: 9 },
-    { code: 'JP', name: 'Japan', dialCode: '+81', flag: '🇯🇵', placeholder: '90 1234 5678', minDigits: 10, maxDigits: 10 },
-    { code: 'KR', name: 'South Korea', dialCode: '+82', flag: '🇰🇷', placeholder: '10 1234 5678', minDigits: 9, maxDigits: 10 },
-    { code: 'SG', name: 'Singapore', dialCode: '+65', flag: '🇸🇬', placeholder: '8123 4567', minDigits: 8, maxDigits: 8 },
-    { code: 'AE', name: 'United Arab Emirates', dialCode: '+971', flag: '🇦🇪', placeholder: '50 123 4567', minDigits: 9, maxDigits: 9 },
-    { code: 'SA', name: 'Saudi Arabia', dialCode: '+966', flag: '🇸🇦', placeholder: '50 123 4567', minDigits: 9, maxDigits: 9 },
-    { code: 'DE', name: 'Germany', dialCode: '+49', flag: '🇩🇪', placeholder: '151 12345678', minDigits: 10, maxDigits: 11 },
-    { code: 'FR', name: 'France', dialCode: '+33', flag: '🇫🇷', placeholder: '6 12 34 56 78', minDigits: 9, maxDigits: 9 },
-    { code: 'IT', name: 'Italy', dialCode: '+39', flag: '🇮🇹', placeholder: '312 345 6789', minDigits: 9, maxDigits: 10 },
-    { code: 'ES', name: 'Spain', dialCode: '+34', flag: '🇪🇸', placeholder: '612 34 56 78', minDigits: 9, maxDigits: 9 },
-    { code: 'IN', name: 'India', dialCode: '+91', flag: '🇮🇳', placeholder: '98123 45678', minDigits: 10, maxDigits: 10 },
-    { code: 'CN', name: 'China', dialCode: '+86', flag: '🇨🇳', placeholder: '138 1234 5678', minDigits: 11, maxDigits: 11 },
-    { code: 'NZ', name: 'New Zealand', dialCode: '+64', flag: '🇳🇿', placeholder: '21 123 4567', minDigits: 8, maxDigits: 10 },
-    { code: 'QA', name: 'Qatar', dialCode: '+974', flag: '🇶🇦', placeholder: '3312 3456', minDigits: 8, maxDigits: 8 },
-    { code: 'KW', name: 'Kuwait', dialCode: '+965', flag: '🇰🇼', placeholder: '9123 4567', minDigits: 8, maxDigits: 8 },
-    { code: 'MY', name: 'Malaysia', dialCode: '+60', flag: '🇲🇾', placeholder: '12 345 6789', minDigits: 9, maxDigits: 10 },
-    { code: 'ID', name: 'Indonesia', dialCode: '+62', flag: '🇮🇩', placeholder: '812 3456 7890', minDigits: 9, maxDigits: 12 },
-    { code: 'TH', name: 'Thailand', dialCode: '+66', flag: '🇹🇭', placeholder: '81 234 5678', minDigits: 9, maxDigits: 9 },
-    { code: 'VN', name: 'Vietnam', dialCode: '+84', flag: '🇻🇳', placeholder: '91 234 5678', minDigits: 9, maxDigits: 10 },
-    { code: 'HK', name: 'Hong Kong', dialCode: '+852', flag: '🇭🇰', placeholder: '9123 4567', minDigits: 8, maxDigits: 8 },
-    { code: 'TW', name: 'Taiwan', dialCode: '+886', flag: '🇹🇼', placeholder: '912 345 678', minDigits: 9, maxDigits: 9 },
-    { code: 'BR', name: 'Brazil', dialCode: '+55', flag: '🇧🇷', placeholder: '11 98765 4321', minDigits: 10, maxDigits: 11 },
-    { code: 'MX', name: 'Mexico', dialCode: '+52', flag: '🇲🇽', placeholder: '55 1234 5678', minDigits: 10, maxDigits: 10 },
-];
+export { COUNTRY_LIST, findCountry };
 
 export default function InternationalPhoneInput({
     id = 'contact_number',
@@ -42,7 +15,9 @@ export default function InternationalPhoneInput({
     defaultCountry = 'PH',
     showError = true,
 }) {
-    const [selectedCountry, setSelectedCountry] = useState(defaultCountry);
+    // Resolve initial country
+    const initialCountryObj = findCountry(defaultCountry) || COUNTRY_LIST[0];
+    const [selectedCountry, setSelectedCountry] = useState(initialCountryObj.code);
     const [localNumber, setLocalNumber] = useState('');
     const [isOpen, setIsOpen] = useState(false);
     const [countrySearch, setCountrySearch] = useState('');
@@ -89,8 +64,7 @@ export default function InternationalPhoneInput({
         if (disabled) setIsOpen(false);
     }, [disabled]);
 
-    // Start each country search fresh and place the cursor directly in the
-    // search field when the calling-code list opens.
+    // Start each country search fresh and place cursor directly in search
     useEffect(() => {
         if (isOpen) {
             setCountrySearch('');
@@ -111,7 +85,7 @@ export default function InternationalPhoneInput({
                 e164: '',
                 formatted: '',
                 isValid: false,
-                error: isExplicitTouched ? 'Contact number is required.' : '',
+                error: isExplicitTouched ? 'Contact Number is required.' : '',
             };
         }
 
@@ -136,23 +110,28 @@ export default function InternationalPhoneInput({
             const lengthValidation = validatePhoneNumberLength(boundedDigits, countryCode);
             if (lengthValidation === 'TOO_SHORT' || nationalSignificantDigits.length < countryObj.minDigits) {
                 isValid = false;
-                error = 'Contact number is incomplete for the selected country.';
+                error = 'Please enter a valid contact number for the selected Country / Region.';
             } else if (lengthValidation === 'TOO_LONG' || nationalSignificantDigits.length > countryObj.maxDigits) {
                 isValid = false;
-                error = `Contact number exceeds the ${countryObj.maxDigits}-digit limit for ${countryObj.name}.`;
+                error = 'Please enter a valid contact number for the selected Country / Region.';
             } else {
                 // Check full phone number validity
-                if (isValidPhoneNumber(e164, countryCode) || isValidPhoneNumber(e164)) {
+                if (
+                    isValidPhoneNumber(e164, countryCode) ||
+                    isValidPhoneNumber(e164) ||
+                    (isPossiblePhoneNumber(e164, countryCode) && nationalSignificantDigits.length >= countryObj.minDigits && nationalSignificantDigits.length <= countryObj.maxDigits) ||
+                    (isPossiblePhoneNumber(e164) && nationalSignificantDigits.length >= countryObj.minDigits && nationalSignificantDigits.length <= countryObj.maxDigits)
+                ) {
                     isValid = true;
                     error = '';
                 } else {
                     isValid = false;
-                    error = 'Please enter a valid mobile number for the selected country.';
+                    error = 'Please enter a valid contact number for the selected Country / Region.';
                 }
             }
         } catch {
             isValid = nationalSignificantDigits.length >= countryObj.minDigits && nationalSignificantDigits.length <= countryObj.maxDigits;
-            error = isValid ? '' : 'Please enter a valid mobile number for the selected country.';
+            error = isValid ? '' : 'Please enter a valid contact number for the selected Country / Region.';
         }
 
         return {
@@ -163,28 +142,25 @@ export default function InternationalPhoneInput({
         };
     };
 
-    // The registration form may already know the user's country (for example,
-    // an international donor selecting "United States"). Keep its dial code
-    // and phone validation in sync instead of leaving the control on PH +63.
+    // When defaultCountry prop changes (e.g. user selects a different country from CountrySelect),
+    // update phone calling code dynamically and revalidate.
     useEffect(() => {
-        const countryObj = COUNTRY_LIST.find((country) => country.code === defaultCountry) || COUNTRY_LIST[0];
+        const countryObj = findCountry(defaultCountry) || COUNTRY_LIST[0];
         if (countryObj.code === selectedCountry) return;
 
         setSelectedCountry(countryObj.code);
         const digits = localNumber.replace(/\D/g, '');
-        const result = computeValidation(digits, countryObj, touched);
+        const result = computeValidation(digits, countryObj, touched || digits.length > 0);
         setLocalNumber(result.formatted);
         setErrorMsg(digits ? result.error : '');
 
-        if (digits) {
-            onChange?.(result.e164, result.isValid, {
-                localNumber: result.formatted,
-                isValid: result.isValid,
-                errorMessage: result.error,
-                country: countryObj.code,
-                dialCode: countryObj.dialCode,
-            });
-        }
+        onChange?.(result.e164, result.isValid, {
+            localNumber: result.formatted,
+            isValid: result.isValid,
+            errorMessage: result.error,
+            country: countryObj.code,
+            dialCode: countryObj.dialCode,
+        });
     }, [defaultCountry]);
 
     // Initialize or parse external value
@@ -200,7 +176,7 @@ export default function InternationalPhoneInput({
             const parsed = parsePhoneNumber(value);
             if (parsed && parsed.country) {
                 setSelectedCountry(parsed.country);
-                const countryObj = COUNTRY_LIST.find((c) => c.code === parsed.country) || COUNTRY_LIST[0];
+                const countryObj = findCountry(parsed.country) || COUNTRY_LIST[0];
                 const res = computeValidation(parsed.nationalNumber, countryObj, false);
                 setLocalNumber(res.formatted || parsed.nationalNumber);
                 setErrorMsg(res.error);
@@ -251,7 +227,7 @@ export default function InternationalPhoneInput({
     const handleNumberChange = (e) => {
         const raw = e.target.value;
         const rawDigits = raw.replace(/\D/g, '');
-        const res = computeValidation(rawDigits, activeCountryObj, touched);
+        const res = computeValidation(rawDigits, activeCountryObj, true);
 
         setLocalNumber(res.formatted);
         setErrorMsg(res.error);
@@ -268,128 +244,53 @@ export default function InternationalPhoneInput({
         setTouched(true);
         const rawDigits = localNumber.replace(/\D/g, '');
         const res = computeValidation(rawDigits, activeCountryObj, true);
-        setErrorMsg(res.error || (!rawDigits ? 'Contact number is required.' : ''));
+        setErrorMsg(res.error || (!rawDigits ? 'Contact Number is required.' : ''));
         onBlur?.(e, res.isValid, res.error);
     };
 
     const dynamicPlaceholder = placeholder || activeCountryObj.placeholder || 'Enter contact number';
-    const dynamicMaxLength = (activeCountryObj.maxDigits || 10) + 7; // extra space for separators
+    const dynamicMaxLength = (activeCountryObj.maxDigits || 10) + 6; // appropriate dynamic max length based on national digits + separators
 
     const hasError = touched && !!errorMsg;
 
     return (
         <div className="w-full">
-            <div
-                ref={containerRef}
-                className={`relative mt-1 flex items-stretch rounded-[0.7rem] border transition ${
-                    hasError
-                        ? 'border-red-500 ring-1 ring-red-500 focus-within:border-red-500 focus-within:ring-2 focus-within:ring-red-500'
-                        : 'border-[#2563EB] focus-within:border-[#22C55E] focus-within:ring-2 focus-within:ring-[#22C55E]'
-                } bg-white ${
-                    disabled ? 'cursor-not-allowed opacity-50 bg-[#2563EB]/5' : ''
-                } ${className}`}
-            >
-                {/* Country Selector Trigger Button */}
-                <button
-                    type="button"
-                    id={`${id}_country_btn`}
-                    aria-label="Country dial code"
-                    aria-haspopup="listbox"
-                    aria-expanded={isOpen}
-                    disabled={disabled}
-                    onClick={() => !disabled && setIsOpen((prev) => !prev)}
-                    className="flex items-center gap-1.5 shrink-0 bg-transparent border-0 border-r border-[#2563EB] text-[#2563EB] font-semibold text-xs py-2 pl-3 pr-2.5 outline-none focus:outline-none cursor-pointer disabled:cursor-not-allowed select-none rounded-l-[0.65rem] hover:bg-[#2563EB]/5 transition"
+            <div ref={containerRef} className="relative mt-1">
+                <div
+                    className={`flex rounded-xl border ${
+                        disabled
+                            ? 'opacity-60 bg-gray-50 border-[#2563EB]/20 cursor-not-allowed'
+                            : hasError
+                                ? 'border-red-500 ring-1 ring-red-500 bg-white'
+                                : 'border-[#2563EB]/20 bg-white focus-within:border-[#2563EB] focus-within:ring-1 focus-within:ring-[#2563EB]'
+                    } overflow-hidden transition`}
                 >
-                    <span className="text-sm leading-none select-none">{activeCountryObj.flag}</span>
-                    <span className="font-bold">{activeCountryObj.dialCode}</span>
-                    <svg
-                        className={`w-3 h-3 text-[#2563EB] transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`}
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                    >
-                        <path
-                            fillRule="evenodd"
-                            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                            clipRule="evenodd"
-                        />
-                    </svg>
-                </button>
-
-                {/* Searchable, scrollable country-code list shared by registration forms. */}
-                {isOpen && (
+                    {/* Calling Code Badge */}
                     <div
-                        role="listbox"
-                        tabIndex={-1}
-                        aria-label="Select Country"
-                        className="absolute top-[calc(100%+4px)] left-0 z-50 w-72 max-w-[calc(100vw-2.5rem)] overflow-hidden rounded-xl border border-[#2563EB]/20 bg-white shadow-2xl focus:outline-none"
+                        className={`flex items-center gap-1.5 px-3 py-2 border-r border-[#2563EB]/15 select-none shrink-0 text-xs font-bold ${
+                            disabled ? 'bg-gray-100 text-[#2563EB]/50' : 'bg-[#2563EB]/5 text-[#2563EB]'
+                        }`}
+                        title={`${activeCountryObj.name} (${activeCountryObj.dialCode})`}
                     >
-                        <div className="border-b border-[#2563EB]/15 bg-white p-2">
-                            <label className="sr-only" htmlFor={`${id}_country_search`}>Search country</label>
-                            <div className="flex items-center gap-2 rounded-lg border border-[#2563EB]/25 px-2.5 py-1.5 focus-within:border-[#22C55E] focus-within:ring-1 focus-within:ring-[#22C55E]">
-                                <svg className="h-3.5 w-3.5 shrink-0 text-[#2563EB]/70" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true">
-                                    <circle cx="8.5" cy="8.5" r="5" strokeWidth="1.8" />
-                                    <path d="m12.2 12.2 4 4" strokeWidth="1.8" strokeLinecap="round" />
-                                </svg>
-                                <input
-                                    ref={countrySearchRef}
-                                    id={`${id}_country_search`}
-                                    type="search"
-                                    value={countrySearch}
-                                    onChange={(event) => setCountrySearch(event.target.value)}
-                                    placeholder="Search country..."
-                                    className="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs font-semibold text-[#2563EB] outline-none placeholder:text-[#2563EB]/60"
-                                />
-                            </div>
-                        </div>
-                        <div className="max-h-52 overflow-y-auto py-1 overscroll-contain">
-                            {filteredCountries.map((c) => {
-                                const isSelected = c.code === selectedCountry;
-                                return (
-                                    <button
-                                        key={c.code}
-                                        ref={isSelected ? selectedItemRef : null}
-                                        type="button"
-                                        role="option"
-                                        aria-selected={isSelected}
-                                        onClick={() => handleCountrySelect(c.code)}
-                                        className={`w-full flex items-center justify-between gap-3 px-3.5 py-2 text-left text-xs transition select-none ${
-                                            isSelected
-                                                ? 'bg-[#22C55E] text-white font-bold'
-                                                : 'text-[#2563EB] hover:bg-[#2563EB]/10 font-semibold'
-                                        }`}
-                                    >
-                                        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                                            <span className="text-base leading-none shrink-0">{c.flag}</span>
-                                            <span className="shrink-0 text-[10px] font-extrabold">{c.code}</span>
-                                            <span className="truncate">{c.name}</span>
-                                        </div>
-                                        <span className={`shrink-0 font-bold text-xs ${isSelected ? 'text-white' : 'text-[#2563EB]/70'}`}>
-                                            {c.dialCode}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                            {filteredCountries.length === 0 && (
-                                <p className="px-3.5 py-3 text-xs font-semibold text-[#2563EB]/70">No countries found.</p>
-                            )}
-                        </div>
+                        <span>{activeCountryObj.flag || '🌐'}</span>
+                        <span>{activeCountryObj.dialCode}</span>
                     </div>
-                )}
 
-                {/* Phone Number Input */}
-                <input
-                    ref={inputRef}
-                    id={id}
-                    type="tel"
-                    value={localNumber}
-                    onChange={handleNumberChange}
-                    onBlur={handleBlur}
-                    disabled={disabled}
-                    placeholder={dynamicPlaceholder}
-                    maxLength={dynamicMaxLength}
-                    required
-                    className="flex-1 min-w-0 bg-transparent border-0 text-[#2563EB] font-semibold text-xs py-2 px-3 outline-none focus:outline-none focus:ring-0 placeholder:text-[#2563EB]/60 disabled:cursor-not-allowed rounded-r-[0.65rem]"
-                />
+                    {/* Phone Number Input */}
+                    <input
+                        ref={inputRef}
+                        id={id}
+                        type="tel"
+                        value={localNumber}
+                        onChange={handleNumberChange}
+                        onBlur={handleBlur}
+                        disabled={disabled}
+                        placeholder={disabled ? 'Select Country / Region first' : dynamicPlaceholder}
+                        maxLength={dynamicMaxLength}
+                        required
+                        className="w-full bg-transparent px-3 py-2 text-xs font-semibold text-[#2563EB] placeholder-[#2563EB]/40 outline-none border-0 focus:ring-0 disabled:cursor-not-allowed disabled:bg-gray-50/50"
+                    />
+                </div>
             </div>
 
             {/* Inline validation message */}

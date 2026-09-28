@@ -12,10 +12,11 @@ use libphonenumber\NumberParseException;
 
 class RegisterRequest extends FormRequest
 {
-    private static array $countryToIso = [
+    public static array $countryToIso = [
         'philippines' => 'PH',
         'ph' => 'PH',
         'united states' => 'US',
+        'united states of america' => 'US',
         'us' => 'US',
         'usa' => 'US',
         'canada' => 'CA',
@@ -23,11 +24,14 @@ class RegisterRequest extends FormRequest
         'united kingdom' => 'GB',
         'uk' => 'GB',
         'gb' => 'GB',
+        'great britain' => 'GB',
         'australia' => 'AU',
         'au' => 'AU',
         'japan' => 'JP',
         'jp' => 'JP',
         'south korea' => 'KR',
+        'korea, south' => 'KR',
+        'korea' => 'KR',
         'kr' => 'KR',
         'singapore' => 'SG',
         'sg' => 'SG',
@@ -70,38 +74,239 @@ class RegisterRequest extends FormRequest
         'br' => 'BR',
         'mexico' => 'MX',
         'mx' => 'MX',
+        'switzerland' => 'CH',
+        'ch' => 'CH',
+        'netherlands' => 'NL',
+        'nl' => 'NL',
+        'sweden' => 'SE',
+        'se' => 'SE',
+        'norway' => 'NO',
+        'no' => 'NO',
+        'denmark' => 'DK',
+        'dk' => 'DK',
+        'finland' => 'FI',
+        'fi' => 'FI',
+        'ireland' => 'IE',
+        'ie' => 'IE',
+        'belgium' => 'BE',
+        'be' => 'BE',
+        'austria' => 'AT',
+        'at' => 'AT',
+        'poland' => 'PL',
+        'pl' => 'PL',
+        'portugal' => 'PT',
+        'pt' => 'PT',
+        'greece' => 'GR',
+        'gr' => 'GR',
+        'turkey' => 'TR',
+        'tr' => 'TR',
+        'russia' => 'RU',
+        'ru' => 'RU',
+        'south africa' => 'ZA',
+        'za' => 'ZA',
+        'egypt' => 'EG',
+        'eg' => 'EG',
+        'argentina' => 'AR',
+        'ar' => 'AR',
+        'chile' => 'CL',
+        'cl' => 'CL',
+        'colombia' => 'CO',
+        'co' => 'CO',
+        'peru' => 'PE',
+        'pe' => 'PE',
+        'israel' => 'IL',
+        'il' => 'IL',
+        'pakistan' => 'PK',
+        'pk' => 'PK',
+        'bangladesh' => 'BD',
+        'bd' => 'BD',
+        'bahrain' => 'BH',
+        'bh' => 'BH',
+        'oman' => 'OM',
+        'om' => 'OM',
+        'jordan' => 'JO',
+        'jo' => 'JO',
+        'lebanon' => 'LB',
+        'lb' => 'LB',
     ];
+
+    public const DEPARTMENT_COURSES = [
+        'College of Teacher Education' => [
+            'Bachelor of Elementary Education',
+            'Bachelor of Secondary Education',
+        ],
+        'College of Arts and Sciences' => [
+            'Bachelor of Arts in Political Science',
+            'Bachelor of Arts in Communication',
+        ],
+        'College of Criminal Justice Education' => [
+            'Bachelor of Science in Criminology',
+        ],
+        'College of Computer Studies' => [
+            'Bachelor of Science in Information Technology',
+        ],
+        'College of Office Administration' => [
+            'Bachelor of Science in Office Administration',
+        ],
+    ];
+
+    public const BENEFICIARY_DEPARTMENTS = [
+        'College of Teacher Education',
+        'College of Arts and Sciences',
+        'College of Criminal Justice Education',
+        'College of Computer Studies',
+        'College of Office Administration',
+    ];
+
+    public const BENEFICIARY_COURSES = [
+        'Bachelor of Elementary Education',
+        'Bachelor of Secondary Education',
+        'Bachelor of Arts in Political Science',
+        'Bachelor of Arts in Communication',
+        'Bachelor of Science in Criminology',
+        'Bachelor of Science in Information Technology',
+        'Bachelor of Science in Office Administration',
+    ];
+
+    public const BENEFICIARY_YEAR_LEVELS = [
+        '1st Year',
+        '2nd Year',
+        '3rd Year',
+        '4th Year',
+    ];
+
+    public const DEPARTMENTS = self::BENEFICIARY_DEPARTMENTS;
+    public const COURSES = self::BENEFICIARY_COURSES;
+    public const YEAR_LEVELS = self::BENEFICIARY_YEAR_LEVELS;
 
     public function authorize(): bool
     {
         return (bool) \App\Services\SystemSettings::get('allow_self_registration', true);
     }
 
+    public static function resolveCountryIso(?string $country, ?string $countryCode = null): string
+    {
+        if (!empty($countryCode) && strlen(trim($countryCode)) === 2) {
+            return strtoupper(trim($countryCode));
+        }
+        $key = strtolower(trim((string) $country));
+        if ($key === '') {
+            return 'PH';
+        }
+        if (isset(self::$countryToIso[$key])) {
+            return self::$countryToIso[$key];
+        }
+        if (strlen($key) === 2) {
+            return strtoupper($key);
+        }
+        return 'PH';
+    }
+
     protected function prepareForValidation(): void
     {
+        $accountTypeInput = trim((string) ($this->input('account_type', '') ?: $this->input('role', '')));
         $countryInput = trim((string) $this->input('country', ''));
-        $contactRaw = self::normalizeContactNumber((string) $this->input('contact_number', ''), $countryInput);
+        $countryCodeInput = trim((string) $this->input('country_code', ''));
+        $contactInput = trim((string) $this->input('contact_number', ''));
+        if ($accountTypeInput === 'beneficiary') {
+            $contactRaw = $contactInput;
+        } else {
+            $contactRaw = self::normalizeContactNumber($contactInput, $countryInput, $countryCodeInput);
+        }
 
         $nullable = fn (string $v): ?string => $v === '' ? null : $v;
 
-        $normalized = [
-            'name'               => self::normalizeName((string) $this->input('name', '')),
-            'email'              => self::normalizeEmail((string) $this->input('email', '')),
-            'role'               => trim((string) $this->input('role', '')),
-            'contact_number'     => $contactRaw,
-            'campus_id'          => $nullable(self::normalizeId((string) $this->input('campus_id', ''))),
-            'address'            => $nullable(trim((string) $this->input('address', ''))),
-            'valid_id_number'    => $nullable(self::normalizeId((string) $this->input('valid_id_number', ''))),
-            'student_id_number'  => $nullable(self::normalizeId((string) $this->input('student_id_number', ''))),
-            'school_email'       => $nullable(self::normalizeEmail((string) $this->input('school_email', ''))),
-            'department'         => $nullable(trim((string) $this->input('department', ''))),
-            'course'             => $nullable(trim((string) $this->input('course', ''))),
-            'year_level'         => $nullable(trim((string) $this->input('year_level', ''))),
-            'country'            => $nullable($countryInput),
-        ];
-        if ($this->has('country_code')) {
-            $normalized['country_code'] = strtoupper(trim((string) $this->input('country_code')));
+        $firstName = self::normalizeName((string) $this->input('first_name', ''));
+        $middleName = self::normalizeName((string) $this->input('middle_name', ''));
+        $lastName = self::normalizeName((string) $this->input('last_name', ''));
+        $nameInput = self::normalizeName((string) $this->input('name', ''));
+
+        if ($firstName !== '' || $lastName !== '') {
+            $computedName = trim($firstName . ($middleName !== '' ? ' ' . $middleName : '') . ' ' . $lastName);
+            $fullName = $nameInput !== '' ? $nameInput : $computedName;
+        } else {
+            $fullName = $nameInput;
+            $parts = explode(' ', $nameInput);
+            if (count($parts) >= 2) {
+                $firstName = $parts[0];
+                $lastName = end($parts);
+                $middleName = count($parts) > 2 ? implode(' ', array_slice($parts, 1, -1)) : '';
+            } else {
+                $firstName = $nameInput;
+                $lastName = '';
+                $middleName = '';
+            }
         }
+
+        $emailInput = self::normalizeEmail((string) ($this->input('email', '') ?: $this->input('school_email', '')));
+
+        // Compose full address string if components provided
+        $addr1 = trim((string) $this->input('address_line_1', ''));
+        $district = trim((string) $this->input('district_local_area', ''));
+        $city = trim((string) ($this->input('city_municipality', '') ?: $this->input('city', '')));
+        $state = trim((string) ($this->input('state_province_region', '') ?: $this->input('state', '')));
+        $postal = trim((string) ($this->input('postal_zip_code', '') ?: $this->input('zip_code', '')));
+        $providedAddress = trim((string) $this->input('address', ''));
+
+        if ($addr1 !== '') {
+            $composedAddress = implode(', ', array_filter([$addr1, $district, $city, $state, $postal, $countryInput]));
+            $address = $providedAddress ?: $composedAddress;
+        } else {
+            $address = $providedAddress;
+        }
+
+        $validIdNum = self::normalizeId((string) ($this->input('valid_id_number', '') ?: $this->input('campus_id', '')));
+        $resolvedIso = self::resolveCountryIso($countryInput, $countryCodeInput);
+
+        $normalized = [
+            'first_name'            => $nullable($firstName),
+            'middle_name'           => $nullable($middleName),
+            'last_name'             => $nullable($lastName),
+            'name'                  => $nullable($fullName),
+            'email'                 => $emailInput,
+            'role'                  => $accountTypeInput,
+            'account_type'          => $accountTypeInput,
+            'contact_number'        => $contactRaw,
+            'campus_id'             => $nullable($validIdNum),
+            'address'               => $nullable($address),
+            'address_line_1'        => $nullable($addr1),
+            'state_province_region' => $nullable($state),
+            'city_municipality'     => $nullable($city),
+            'district_local_area'   => $nullable($district),
+            'postal_zip_code'       => $nullable($postal),
+            'valid_id_type'         => $nullable(trim((string) $this->input('valid_id_type', ''))),
+            'valid_id_number'       => $nullable($validIdNum),
+            'student_id_number'     => $nullable(self::normalizeId((string) $this->input('student_id_number', ''))),
+            'school_email'          => $nullable($emailInput),
+            'department'            => $nullable(trim((string) $this->input('department', ''))),
+            'course'                => $nullable(trim((string) $this->input('course', ''))),
+            'year_level'            => $nullable(trim((string) $this->input('year_level', ''))),
+            'country'               => $nullable($countryInput),
+            'country_code'          => $nullable($resolvedIso),
+        ];
+
+        // Isolate role-specific fields
+        if ($accountTypeInput === 'beneficiary') {
+            $normalized['address'] = null;
+            $normalized['address_line_1'] = null;
+            $normalized['state_province_region'] = null;
+            $normalized['city_municipality'] = null;
+            $normalized['district_local_area'] = null;
+            $normalized['postal_zip_code'] = null;
+            $normalized['valid_id_type'] = null;
+            $normalized['valid_id_number'] = null;
+            $normalized['campus_id'] = null;
+            $normalized['country'] = null;
+            $normalized['country_code'] = null;
+            $normalized['school_email'] = $emailInput;
+        } elseif ($accountTypeInput === 'donor') {
+            $normalized['student_id_number'] = null;
+            $normalized['school_email'] = null;
+            $normalized['department'] = null;
+            $normalized['course'] = null;
+            $normalized['year_level'] = null;
+        }
+
         $this->merge($normalized);
     }
 
@@ -120,12 +325,12 @@ class RegisterRequest extends FormRequest
         return strtoupper(trim($value));
     }
 
-    public static function normalizeContactNumber(string $value, string $country = ''): string
+    public static function normalizeContactNumber(string $value, string $country = '', ?string $countryCode = null): string
     {
         $value = trim($value);
         if ($value === '') return '';
 
-        $region = self::$countryToIso[strtolower(trim($country))] ?? 'PH';
+        $region = self::resolveCountryIso($country, $countryCode);
         try {
             $phoneUtil = PhoneNumberUtil::getInstance();
             $number = str_starts_with($value, '+')
@@ -143,50 +348,63 @@ class RegisterRequest extends FormRequest
 
     public function rules(): array
     {
+        $isBeneficiary = $this->input('role') === 'beneficiary' || $this->input('account_type') === 'beneficiary';
+        $isDonor = $this->input('role') === 'donor' || $this->input('account_type') === 'donor';
+
         return [
+            'role' => ['required', Rule::in(['beneficiary', 'donor'])],
+            'account_type' => ['nullable', Rule::in(['beneficiary', 'donor'])],
+            'first_name' => ['required', 'string', 'max:100'],
+            'middle_name' => ['nullable', 'string', 'max:100'],
+            'last_name' => ['required', 'string', 'max:100'],
             'name' => [
-                'required', 'string', 'max:255',
+                'nullable', 'string', 'max:255',
                 function ($attribute, $value, $fail) {
-                    if (User::query()->whereRaw('LOWER(name) = ?', [strtolower($value)])->exists()) {
+                    if (!empty($value) && User::query()->whereRaw('LOWER(name) = ?', [strtolower($value)])->exists()) {
                         $fail('This name is already taken.');
                     }
                 },
             ],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email', 'regex:/^[^\s@]+@[^\s@]+\.[^\s@]+$/'],
-            'role' => ['required', Rule::in(['donor', 'beneficiary', 'staff'])],
-            'campus_id' => [
-                'nullable',
-                'string',
-                'max:50',
-                'unique:users,campus_id',
-            ],
-            'address' => ['nullable', 'string', 'max:255'],
-            'valid_id_number' => ['nullable', 'string', 'max:50', 'unique:users,valid_id_number'],
-            'student_id_number' => ['nullable', 'string', 'max:50', 'unique:users,student_id_number'],
-            'school_email' => ['nullable', 'email', 'max:255'],
-            'department' => ['nullable', 'string', 'max:255'],
-            'course' => ['nullable', 'string', 'max:255'],
-            'year_level' => ['nullable', 'string', 'max:50'],
-            'country' => [
-                'nullable',
-                'string',
-                'max:100',
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                'unique:users,email',
+                'regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/',
                 function ($attribute, $value, $fail) {
-                    if (!is_null($value) && (trim(strtolower($value)) === 'select your country' || trim($value) === '')) {
-                        $fail('Please select a valid country.');
+                    if (str_contains($value, '..')) {
+                        $fail('Please enter a valid email address.');
                     }
                 },
             ],
-            'country_code' => ['nullable', 'string', 'size:2'],
             'contact_number' => [
                 'required',
                 'string',
                 'max:30',
-                'unique:users,contact_number',
-                function ($attribute, $value, $fail) {
+                function ($attribute, $value, $fail) use ($isBeneficiary, $isDonor) {
+                    if (empty($value)) {
+                        $fail('Contact Number is required.');
+                        return;
+                    }
+
+                    if ($isBeneficiary) {
+                        if (!preg_match('/^09[0-9]{9}$/', $value)) {
+                            $fail('Please enter a valid Philippine mobile number (09XXXXXXXXX).');
+                            return;
+                        }
+                        $localNum = trim($value);
+                        $e164Num = '+63' . substr($localNum, 1);
+                        $exists = User::query()->where('contact_number', $localNum)->orWhere('contact_number', $e164Num)->exists();
+                        if ($exists) {
+                            $fail('This contact number is already taken. Please use a different contact number.');
+                        }
+                        return;
+                    }
+
                     $phoneUtil = PhoneNumberUtil::getInstance();
-                    $countryInput = trim((string) $this->input('country', ''));
-                    $region = self::$countryToIso[strtolower($countryInput)] ?? 'PH';
+                    $countryInput = $isDonor ? trim((string) $this->input('country', '')) : 'PH';
+                    $countryCodeInput = $isDonor ? trim((string) $this->input('country_code', '')) : 'PH';
+                    $region = self::resolveCountryIso($countryInput, $countryCodeInput);
 
                     try {
                         $numberProto = str_starts_with($value, '+')
@@ -194,14 +412,79 @@ class RegisterRequest extends FormRequest
                             : $phoneUtil->parse($value, $region);
 
                         if (!$phoneUtil->isValidNumber($numberProto)) {
-                            $fail('Please enter a valid mobile number for the selected country.');
+                            $fail('Please enter a valid contact number for the selected Country / Region.');
                             return;
                         }
+
+                        $e164 = $phoneUtil->format($numberProto, PhoneNumberFormat::E164);
+                        $exists = User::query()->where('contact_number', $e164)->orWhere('contact_number', $value)->exists();
+                        if ($exists) {
+                            $fail('This contact number is already taken. Please use a different contact number.');
+                        }
                     } catch (NumberParseException) {
-                        $fail('Please enter a valid mobile number for the selected country.');
+                        $fail('Please enter a valid contact number for the selected Country / Region.');
                     }
                 },
             ],
+
+            // Beneficiary-specific rules
+            'student_id_number' => [
+                $isBeneficiary ? 'required' : 'nullable',
+                'string',
+                'max:9',
+                $isBeneficiary ? 'regex:/^\d{2}-\d{6}$/' : 'nullable',
+                'unique:users,student_id_number',
+            ],
+            'department' => [
+                $isBeneficiary ? 'required' : 'nullable',
+                'string',
+                'max:255',
+                $isBeneficiary ? Rule::in(self::BENEFICIARY_DEPARTMENTS) : 'nullable',
+            ],
+            'course' => [
+                $isBeneficiary ? 'required' : 'nullable',
+                'string',
+                'max:255',
+                $isBeneficiary ? function ($attribute, $value, $fail) {
+                    $department = $this->input('department');
+                    $allowed = self::DEPARTMENT_COURSES[$department] ?? [];
+                    if (!in_array($value, $allowed, true)) {
+                        $fail('The selected course does not belong to the selected department. Please choose a valid course.');
+                    }
+                } : 'nullable',
+            ],
+            'year_level' => [
+                $isBeneficiary ? 'required' : 'nullable',
+                'string',
+                'max:50',
+                $isBeneficiary ? Rule::in(self::BENEFICIARY_YEAR_LEVELS) : 'nullable',
+            ],
+
+            // Donor-specific rules
+            'country' => [
+                $isDonor ? 'required' : 'nullable',
+                'string',
+                'max:100',
+                function ($attribute, $value, $fail) use ($isDonor) {
+                    if ($isDonor && (!is_null($value) && (trim(strtolower($value)) === 'select your country' || trim(strtolower($value)) === 'select country / region' || trim(strtolower($value)) === 'enter your country/region' || trim(strtolower($value)) === 'enter your country / region' || trim($value) === ''))) {
+                        $fail('Please select your Country / Region before continuing.');
+                    }
+                },
+            ],
+            'country_code' => ['nullable', 'string', 'max:10'],
+            'address_line_1' => [$isDonor ? 'required' : 'nullable', 'string', 'max:255'],
+            'state_province_region' => ['nullable', 'string', 'max:255'],
+            'city_municipality' => ['nullable', 'string', 'max:255'],
+            'district_local_area' => ['nullable', 'string', 'max:255'],
+            'postal_zip_code' => ['nullable', 'string', 'max:50'],
+            'valid_id_type' => [$isDonor ? 'required' : 'nullable', 'string', 'max:100'],
+            'valid_id_number' => [
+                $isDonor ? 'required' : 'nullable',
+                'string',
+                'max:50',
+                'unique:users,valid_id_number',
+            ],
+
             'password' => [
                 'required',
                 'string',
@@ -226,7 +509,7 @@ class RegisterRequest extends FormRequest
                         $fail('This password is too common or easily guessable. Please choose a stronger password.');
                         return;
                     }
-                    $nameParts = array_filter(explode(' ', strtolower($this->name ?? '')));
+                    $nameParts = array_filter(explode(' ', strtolower($this->name ?? ($this->first_name . ' ' . $this->last_name))));
                     $emailParts = explode('@', strtolower($this->email ?? ''));
                     $emailUsername = $emailParts[0] ?? '';
                     foreach ($nameParts as $part) {
@@ -246,27 +529,36 @@ class RegisterRequest extends FormRequest
 
     public function messages(): array
     {
-        $idLabel = 'Valid ID Number';
-
         return [
+            'role.required' => 'Please select an account type.',
+            'role.in' => 'Please select a valid account type.',
+            'account_type.required' => 'Please select an account type.',
+            'account_type.in' => 'Please select a valid account type.',
+            'first_name.required' => 'First Name is required.',
+            'last_name.required' => 'Last Name is required.',
             'name.unique' => 'This name is already taken.',
-            'email.unique' => 'This email address is already taken.',
-            'contact_number.unique' => 'This contact number is already taken.',
-            'campus_id.unique' => 'This ID number is already taken.',
-            'valid_id_number.unique' => 'This Valid ID Number is already taken.',
-            'student_id_number.unique' => 'This student ID number is already taken.',
-            'campus_id.required' => "{$idLabel} is required.",
-            'campus_id.required_if' => "{$idLabel} is required.",
-            'valid_id_number.required' => 'Valid ID Number is required.',
-            'student_id_number.required' => 'Student ID Number is required.',
-            'school_email.required' => 'School Email Address is required.',
-            'department.required' => 'Department is required.',
-            'course.required' => 'Course is required.',
-            'year_level.required' => 'Year Level is required.',
-            'address.required' => 'Address is required.',
-            'country.required' => 'Please select your country.',
-            'contact_number.required' => 'Contact number is required.',
+            'email.required' => 'Email Address is required.',
+            'email.unique' => 'This email address is already taken. Please use a different email address.',
+            'email.email' => 'Please enter a valid email address.',
             'email.regex' => 'Please enter a valid email address.',
+            'contact_number.required' => 'Contact Number is required.',
+            'contact_number.unique' => 'This contact number is already taken. Please use a different contact number.',
+            'student_id_number.required' => 'Student ID Number is required.',
+            'student_id_number.regex' => 'Please enter a valid Student ID Number in the format YY-###### (e.g., 21-010956).',
+            'student_id_number.unique' => 'This Student ID Number is already registered.',
+            'department.required' => 'Please select a department.',
+            'department.in' => 'Please select a valid department.',
+            'course.required' => 'Please select a course.',
+            'course.in' => 'Please select a valid course.',
+            'year_level.required' => 'Please select a year level.',
+            'year_level.in' => 'Please select a valid year level.',
+            'country.required' => 'Please select your Country / Region before continuing.',
+            'address_line_1.required' => 'Please enter your address.',
+            'valid_id_type.required' => 'Please select a valid ID type.',
+            'valid_id_number.required' => 'Please enter your valid ID number.',
+            'valid_id_number.unique' => 'This Valid ID Number is already taken.',
+            'password.required' => 'Password is required.',
+            'password.confirmed' => 'Passwords do not match.',
             'password' => 'The password must contain an allowed special character.',
         ];
     }

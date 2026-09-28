@@ -19,6 +19,10 @@ const clearSession = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     try {
+        if (localStorage.getItem('relieflink_remember_me') !== 'true') {
+            localStorage.removeItem('relieflink_remembered_email');
+            localStorage.removeItem('relieflink_remember_me');
+        }
         Object.keys(localStorage).forEach((key) => {
             if (key.startsWith('relieflink:last-authenticated-route')) {
                 localStorage.removeItem(key);

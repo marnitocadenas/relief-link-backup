@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import api from '../api/axios';
 import { Icon, Button, Badge, Error, Empty } from '../Components/UI';
-import InternationalPhoneInput, { COUNTRY_LIST } from '../Components/InternationalPhoneInput';
+import InternationalPhoneInput, { COUNTRY_LIST, findCountry } from '../Components/InternationalPhoneInput';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 /**
@@ -691,14 +691,15 @@ function Home() {
     );
 }
 
-function CountrySelect({ id, value, onChange, disabled = false }) {
+function CountrySelect({ id, value, onChange, disabled = false, placeholder = 'Enter your country/region' }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const containerRef = useRef(null);
-    const selected = COUNTRY_LIST.find((country) => country.name === value);
-    const options = COUNTRY_LIST.filter((country) =>
-        country.name.toLowerCase().includes(query.toLowerCase()) || country.code.toLowerCase().includes(query.toLowerCase())
-    );
+    const selected = findCountry(value) || COUNTRY_LIST.find((country) => country.name === value || country.code === value);
+    const options = COUNTRY_LIST.filter((country) => {
+        const q = query.trim().toLowerCase();
+        return !q || country.name.toLowerCase().includes(q) || country.code.toLowerCase().includes(q) || country.dialCode.includes(q);
+    });
 
     useEffect(() => {
         if (disabled) setOpen(false);
@@ -713,7 +714,7 @@ function CountrySelect({ id, value, onChange, disabled = false }) {
     }, []);
 
     const choose = (country) => {
-        onChange(country.name);
+        onChange(country.name, country.code);
         setQuery('');
         setOpen(false);
     };
@@ -729,42 +730,57 @@ function CountrySelect({ id, value, onChange, disabled = false }) {
                 onClick={() => {
                     if (!disabled) setOpen((current) => !current);
                 }}
-                className="field flex w-full items-center justify-between text-left text-xs py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5"
+                className={`field flex w-full items-center justify-between text-left text-xs py-2 font-semibold ${
+                    disabled
+                        ? 'opacity-60 bg-gray-50 cursor-not-allowed text-[#2563EB]/40'
+                        : !selected
+                            ? 'border-amber-400 focus:border-[#2563EB] text-[#2563EB]/70'
+                            : 'text-[#2563EB]'
+                }`}
             >
-                <span className={selected ? 'text-[#2563EB]' : 'text-[#2563EB]/70'}>
-                    {selected ? `${selected.flag} ${selected.name}` : 'Select your country'}
+                <span className="truncate flex items-center gap-1.5">
+                    {selected ? (
+                        <>
+                            <span>{selected.flag}</span>
+                            <span className="font-bold text-[#2563EB]">{selected.name}</span>
+                        </>
+                    ) : (
+                        <span className="text-[#2563EB]/60">{placeholder}</span>
+                    )}
                 </span>
-                <svg className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <svg className={`h-3.5 w-3.5 shrink-0 text-[#2563EB] transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                 </svg>
             </button>
             {open && !disabled && (
                 <div role="listbox" aria-label="Select your country" className="absolute left-0 top-[calc(100%+4px)] z-50 w-full overflow-hidden rounded-xl border border-[#2563EB]/20 bg-white shadow-xl">
-                    <div className="border-b border-[#2563EB]/15 p-2">
+                    <div className="border-b border-[#2563EB]/15 p-2 bg-white">
                         <input
                             autoFocus
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Search country"
+                            placeholder="Search country..."
                             className="field w-full py-1.5 text-xs font-semibold"
                         />
                     </div>
-                    <div className="max-h-56 overflow-y-auto py-1">
-                        {options.map((country) => (
-                            <button
-                                key={country.code}
-                                type="button"
-                                role="option"
-                                aria-selected={country.name === value}
-                                onClick={() => choose(country)}
-                                className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs font-semibold transition ${
-                                    country.name === value ? 'bg-[#22C55E] text-white' : 'text-[#2563EB] hover:bg-[#2563EB]/10'
-                                }`}
-                            >
-                                <span>{country.flag} {country.name}</span>
-                                <span className="text-[10px] font-bold opacity-75">{country.dialCode}</span>
-                            </button>
-                        ))}
+                    <div className="max-h-56 overflow-y-auto py-1 overscroll-contain">
+                        {options.map((country) => {
+                            const isSelected = selected && selected.code === country.code;
+                            return (
+                                <button
+                                    key={country.code}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isSelected}
+                                    onClick={() => choose(country)}
+                                    className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs font-semibold transition ${
+                                        isSelected ? 'bg-[#22C55E] text-white' : 'text-[#2563EB] hover:bg-[#2563EB]/10'
+                                    }`}
+                                >
+                                    <span className="truncate">{country.name}</span>
+                                </button>
+                            );
+                        })}
                         {options.length === 0 && <p className="px-3 py-2 text-xs font-semibold text-[#2563EB]/70">No countries found.</p>}
                     </div>
                 </div>
@@ -772,6 +788,50 @@ function CountrySelect({ id, value, onChange, disabled = false }) {
         </div>
     );
 }
+
+const VALID_ID_TYPES = [
+    'Passport',
+    "Driver's License",
+    'National Identity Card',
+];
+
+const BENEFICIARY_DEPARTMENT_COURSES = {
+    'College of Teacher Education': [
+        'Bachelor of Elementary Education',
+        'Bachelor of Secondary Education',
+    ],
+    'College of Arts and Sciences': [
+        'Bachelor of Arts in Political Science',
+        'Bachelor of Arts in Communication',
+    ],
+    'College of Criminal Justice Education': [
+        'Bachelor of Science in Criminology',
+    ],
+    'College of Computer Studies': [
+        'Bachelor of Science in Information Technology',
+    ],
+    'College of Office Administration': [
+        'Bachelor of Science in Office Administration',
+    ],
+};
+
+const BENEFICIARY_DEPARTMENTS = Object.keys(BENEFICIARY_DEPARTMENT_COURSES);
+
+const BENEFICIARY_COURSES = Object.values(BENEFICIARY_DEPARTMENT_COURSES).flat();
+
+const BENEFICIARY_YEAR_LEVELS = [
+    '1st Year',
+    '2nd Year',
+    '3rd Year',
+    '4th Year',
+];
+
+const YEAR_LEVELS = [
+    '1st Year',
+    '2nd Year',
+    '3rd Year',
+    '4th Year',
+];
 
 function Auth({ register = false }) {
     const { login, user, loading: authLoading } = useAuth();
@@ -781,27 +841,37 @@ function Auth({ register = false }) {
     const [mode, setMode] = useState(register ? 'register' : 'login');
 
     const [f, setF] = useState({
+        account_type: '',
+        role: '',
+        first_name: '',
+        middle_name: '',
+        last_name: '',
         name: '',
         email: '',
         password: '',
         password_confirmation: '',
-        role: '',
-        country: '',
-        country_code: '',
-        campus_id: '',
-        address: '',
+        contact_number: '',
+        // Beneficiary fields
         student_id_number: '',
         school_email: '',
         department: '',
         course: '',
         year_level: '',
-        contact_number: '',
+        // Donor fields
+        country: 'Philippines',
+        country_code: 'PH',
+        address_line_1: '',
+        state_province_region: '',
+        city_municipality: '',
+        district_local_area: '',
+        postal_zip_code: '',
+        valid_id_type: '',
+        valid_id_number: '',
     });
     const [isPhoneValid, setIsPhoneValid] = useState(false);
-    // Each state is sourced from Laravel, never from a local list of accounts.
+    // Uniqueness states from server
     const [uniqueness, setUniqueness] = useState({
-        name: { status: 'idle', message: '' },
-        campus_id: { status: 'idle', message: '' },
+        valid_id_number: { status: 'idle', message: '' },
         student_id_number: { status: 'idle', message: '' },
         contact_number: { status: 'idle', message: '' },
         email: { status: 'idle', message: '' },
@@ -827,10 +897,11 @@ function Auth({ register = false }) {
     // Registration Password Security Calculations
     const regPwd = f.password || '';
     const regConfirmPwd = f.password_confirmation || '';
-    const regNameStr = f.name || '';
-    const regEmailStr = f.email || '';
+    const regFirstNameStr = f.first_name || '';
+    const regLastNameStr = f.last_name || '';
+    const regEmailStr = f.account_type === 'beneficiary' ? (f.school_email || '') : (f.email || '');
     const regEmailPrefix = regEmailStr.split('@')[0] || '';
-    const regNameParts = regNameStr.toLowerCase().split(' ').filter(p => p.length >= 3);
+    const regNameParts = [regFirstNameStr, regLastNameStr].join(' ').toLowerCase().split(' ').filter(p => p.length >= 3);
 
     const regHasLength = regPwd.length >= 8 && regPwd.length <= 64;
     const regHasUpper = /[A-Z]/.test(regPwd);
@@ -857,95 +928,97 @@ function Auth({ register = false }) {
     const regMatchesConfirm = regConfirmPwd.length > 0 && regConfirmPwd === regPwd;
     const regIsPasswordValid = regHasLength && regHasUpper && regHasLower && regHasNumber && regHasSpecial && regNoSpaces && regNotWeak && regNoPersonal;
 
-    const nameTrimmed = regNameStr.trim();
-    const nameWords = nameTrimmed.split(/[\s,]+/).filter((w) => w.length >= 1);
-    const regNameValid = nameWords.length >= 2
-        && /^[A-Za-zÀ-ÿ\s,'\-\.]+$/.test(nameTrimmed)
-        && nameTrimmed.length >= 3
-        && nameTrimmed.length <= 255;
-    const regRoleValid = ['donor', 'beneficiary'].includes(f.role);
-    const regCountryValid = (f.country || '').trim().length > 0
-        && (f.country || '').trim().toLowerCase() !== 'select your country'
-        && (f.country || '').trim().length <= 100;
+    const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    const isBeneficiary = f.account_type === 'beneficiary';
+    const isDonor = f.account_type === 'donor';
+    const regNamesValid = Boolean((f.first_name || '').trim() && (f.last_name || '').trim());
+    const isFirstNameValid = Boolean((f.first_name || '').trim());
+    const isLastNameValid = Boolean((f.last_name || '').trim());
 
-    // Beneficiary fields validation
-    const regStudentIdTrimmed = (f.student_id_number || '').trim();
-    const regStudentIdValid = regStudentIdTrimmed.length >= 3 && regStudentIdTrimmed.length <= 50;
-    const regSchoolEmailTrimmed = (f.school_email || '').trim();
-    const regSchoolEmailValid = regSchoolEmailTrimmed.length > 0
-        && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regSchoolEmailTrimmed);
-    const regDepartmentValid = (f.department || '').trim().length > 0;
-    const regCourseValid = (f.course || '').trim().length > 0;
-    const regYearLevelValid = (f.year_level || '').trim().length > 0;
+    const STUDENT_ID_REGEX = /^\d{2}-\d{6}$/;
+    const regStudentIdValid = STUDENT_ID_REGEX.test((f.student_id_number || '').trim());
+    const regBeneficiaryEmailValid = (f.school_email || '').trim().length > 0 && EMAIL_REGEX.test((f.school_email || '').trim()) && !(f.school_email || '').trim().includes('..');
+    const regDepartmentValid = BENEFICIARY_DEPARTMENTS.includes((f.department || '').trim());
+    const regCourseValid = regDepartmentValid && (BENEFICIARY_DEPARTMENT_COURSES[(f.department || '').trim()] || []).includes((f.course || '').trim());
+    const regYearLevelValid = regCourseValid && BENEFICIARY_YEAR_LEVELS.includes((f.year_level || '').trim());
+    const regBeneficiaryContactValid = /^09[0-9]{9}$/.test((f.contact_number || '').trim());
 
-    // Donor fields validation
-    const regAddressValid = (f.address || '').trim().length > 0;
-    const regIdTrimmed = (f.campus_id || '').trim();
-    const regIdValid = regIdTrimmed.length >= 3 && regIdTrimmed.length <= 50;
+    // Step by step progressive unlocks for Beneficiary
+    const canEnterStudentId = regNamesValid;
+    const canEnterBeneficiaryEmail = canEnterStudentId && regStudentIdValid && uniqueness.student_id_number.status !== 'taken' && uniqueness.student_id_number.status !== 'error';
+    const canEnterDepartment = canEnterBeneficiaryEmail && regBeneficiaryEmailValid && uniqueness.email.status !== 'taken' && uniqueness.email.status !== 'error';
+    const canEnterCourse = canEnterDepartment && regDepartmentValid;
+    const canEnterYearLevel = canEnterCourse && regCourseValid;
+    const canEnterBeneficiaryContact = canEnterYearLevel && regYearLevelValid;
+    const canEnterBeneficiaryPassword = canEnterBeneficiaryContact && regBeneficiaryContactValid && uniqueness.contact_number.status !== 'taken' && uniqueness.contact_number.status !== 'error';
+    const canEnterBeneficiaryConfirm = canEnterBeneficiaryPassword && regIsPasswordValid;
 
-    // Contact number validation
-    const regContactNumber = f.contact_number || '';
-    const regContactValid = isPhoneValid === true && regContactNumber.trim().length >= 7;
+    // Donor validation and progressive gating
+    const donorEmailTrimmed = (f.email || '').trim();
+    const isDonorEmailEmpty = donorEmailTrimmed.length === 0;
+    const isDonorEmailFormatValid = EMAIL_REGEX.test(donorEmailTrimmed) && !donorEmailTrimmed.includes('..');
+    const isDonorEmailAvailable = uniqueness.email.status === 'available';
+    const regDonorEmailValid = isDonorEmailFormatValid && isDonorEmailAvailable;
 
-    // Email validation
-    const regEmailValid = regEmailStr.trim() !== ''
-        && regEmailStr.trim().length <= 255
-        && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmailStr.trim());
+    // Sequential unlocks for Donor:
+    // 1. Email field unlocks after First Name + Last Name are complete
+    const canEnterDonorEmail = regNamesValid;
+    // 2. Country / Region unlocks ONLY after Email is valid format and confirmed available in DB
+    const canEnterDonorCountry = regNamesValid && regDonorEmailValid;
+    const regCountryValid = Boolean((f.country || '').trim() && (f.country || '').trim().toLowerCase() !== 'select your country' && (f.country || '').trim().toLowerCase() !== 'select country / region' && (f.country || '').trim().toLowerCase() !== 'enter your country/region' && (f.country || '').trim().toLowerCase() !== 'enter your country / region' && findCountry(f.country || f.country_code));
+    // 3. Contact Number unlocks ONLY after Country / Region is selected
+    const canEnterDonorContact = canEnterDonorCountry && regCountryValid;
+    const regDonorContactValid = isPhoneValid === true && Boolean((f.contact_number || '').trim());
+    const isDonorContactAvailable = uniqueness.contact_number.status === 'available';
+    // 4. Address Line 1 and subsequent fields unlock ONLY after Contact Number is entered, valid for selected country, and available
+    const canEnterDonorSubsequent = canEnterDonorContact && regDonorContactValid && isDonorContactAvailable;
 
-    // Uniqueness states from server
-    const regNameAvailable = uniqueness.name.status === 'available';
-    const regIdAvailable = uniqueness.campus_id.status === 'available';
-    const regStudentIdAvailable = uniqueness.student_id_number?.status === 'available';
-    const regContactAvailable = uniqueness.contact_number.status === 'available';
-    const regEmailAvailable = uniqueness.email.status === 'available';
+    const regAddressLine1Valid = (f.address_line_1 || '').trim().length > 0;
+    const regValidIdTypeValid = (f.valid_id_type || '').trim().length > 0;
+    const regValidIdNumberValid = (f.valid_id_number || '').trim().length >= 3;
 
-    // Strict Sequential Field Progression Gates
-    // 1. Account Type is enabled on form load. Country requires Account Type selected.
-    const regCanUseCountry = regRoleValid;
+    const regBeneficiaryValid = isBeneficiary
+        && regNamesValid
+        && regStudentIdValid
+        && uniqueness.student_id_number.status !== 'taken'
+        && regBeneficiaryEmailValid
+        && uniqueness.email.status !== 'taken'
+        && regDepartmentValid
+        && regCourseValid
+        && regYearLevelValid
+        && regBeneficiaryContactValid
+        && uniqueness.contact_number.status !== 'taken'
+        && regIsPasswordValid
+        && regMatchesConfirm;
 
-    // 2. Beneficiary sequence: Country -> Student ID -> School Email -> Department -> Course -> Year Level -> Contact
-    const regCanUseStudentId = f.role === 'beneficiary' && regCanUseCountry && regCountryValid;
-    const regCanUseSchoolEmail = regCanUseStudentId && regStudentIdValid && regStudentIdAvailable;
-    const regCanUseDepartment = regCanUseSchoolEmail && regSchoolEmailValid;
-    const regCanUseCourse = regCanUseDepartment && regDepartmentValid;
-    const regCanUseYearLevel = regCanUseCourse && regCourseValid;
+    const regDonorValid = isDonor
+        && regNamesValid
+        && regDonorEmailValid
+        && regCountryValid
+        && regDonorContactValid
+        && isDonorContactAvailable
+        && regAddressLine1Valid
+        && regValidIdTypeValid
+        && regValidIdNumberValid
+        && uniqueness.valid_id_number.status !== 'taken'
+        && regIsPasswordValid
+        && regMatchesConfirm;
 
-    // 3. Donor sequence: Country -> Address -> Valid ID -> Contact
-    const regCanUseAddress = f.role === 'donor' && regCanUseCountry && regCountryValid;
-    const regCanUseValidId = regCanUseAddress && regAddressValid;
-
-    // 4. Contact Number Gate
-    const regCanUseContact = f.role === 'beneficiary'
-        ? (regCanUseYearLevel && regYearLevelValid)
-        : f.role === 'donor'
-            ? (regCanUseValidId && regIdValid && regIdAvailable)
-            : false;
-
-    // 5. Downstream Common Gates
-    const regCanUseEmail = regCanUseContact && regContactValid && regContactAvailable;
-    const regCanUsePassword = regCanUseEmail && regEmailValid && regEmailAvailable;
-    const regCanUseConfirm = regCanUsePassword && regIsPasswordValid;
-    const regIsFormValid = regNameValid && regNameAvailable && regCanUseConfirm && regMatchesConfirm;
+    const regIsFormValid = isBeneficiary ? regBeneficiaryValid : (isDonor ? regDonorValid : false);
 
     const duplicateCandidates = {
-        name: regNameValid ? nameTrimmed : '',
-        campus_id: (f.role === 'donor' && regCanUseValidId && regIdValid) ? regIdTrimmed : '',
-        student_id_number: (f.role === 'beneficiary' && regCanUseStudentId && regStudentIdValid) ? regStudentIdTrimmed : '',
-        contact_number: (regCanUseContact && regContactValid) ? regContactNumber.trim() : '',
-        email: (regCanUseEmail && regEmailValid) ? regEmailStr.trim() : '',
+        student_id_number: (isBeneficiary && regStudentIdValid) ? f.student_id_number.trim() : '',
+        valid_id_number: (isDonor && regValidIdNumberValid) ? f.valid_id_number.trim() : '',
+        contact_number: isBeneficiary
+            ? (regBeneficiaryContactValid ? f.contact_number.trim() : '')
+            : (regDonorContactValid && isPhoneValid ? (f.contact_number || '').trim() : ''),
+        email: isBeneficiary
+            ? (regBeneficiaryEmailValid ? f.school_email.trim() : '')
+            : (isDonor && isDonorEmailFormatValid ? f.email.trim() : ''),
     };
     const duplicateCandidateKey = JSON.stringify(duplicateCandidates);
 
-    const handleRegistrationNameChange = (e) => {
-        setF((prev) => ({
-            ...prev,
-            name: e.target.value,
-        }));
-    };
-
-    // Debounce real-time identity checks so every completed field is verified by
-    // the API, while typing stays responsive. Cancelling stale responses avoids
-    // an older value overwriting the state of a newer value.
+    // Debounce real-time identity checks
     useEffect(() => {
         const candidates = JSON.parse(duplicateCandidateKey);
         let cancelled = false;
@@ -966,7 +1039,13 @@ function Auth({ register = false }) {
             await Promise.all(fields.filter((field) => candidates[field]).map(async (field) => {
                 const value = candidates[field];
                 try {
-                    const { data } = await api.post('/register/check-availability', { field, value, country: f.country });
+                    const { data } = await api.post('/register/check-availability', {
+                        field,
+                        value,
+                        account_type: f.account_type,
+                        country: isBeneficiary ? 'Philippines' : (f.country || 'Philippines'),
+                        country_code: f.country_code || undefined,
+                    });
                     if (!cancelled) {
                         setUniqueness((previous) => ({
                             ...previous,
@@ -990,7 +1069,7 @@ function Auth({ register = false }) {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [duplicateCandidateKey]);
+    }, [duplicateCandidateKey, f.account_type, isBeneficiary, f.country, f.country_code]);
 
     const renderDuplicateStatus = (field) => {
         const state = uniqueness[field];
@@ -1001,81 +1080,97 @@ function Auth({ register = false }) {
         return <p className="mt-1 text-[11px] font-semibold text-red-600">{state.message}</p>;
     };
 
-    const handleRegistrationRoleChange = (e) => {
-        const newRole = e.target.value;
-        setF((prev) => ({
+    const handleRegistrationAccountTypeChange = (e) => {
+        const selectedType = e.target.value;
+        setError('');
+        setF((prev) => {
+            const next = {
+                ...prev,
+                account_type: selectedType,
+                role: selectedType,
+            };
+            if (selectedType === 'donor') {
+                // Clear Beneficiary-specific fields
+                next.student_id_number = '';
+                next.school_email = '';
+                next.department = '';
+                next.course = '';
+                next.year_level = '';
+                next.country = '';
+                next.country_code = '';
+                next.contact_number = '';
+            } else if (selectedType === 'beneficiary') {
+                // Clear Donor-specific fields
+                next.email = '';
+                next.country = '';
+                next.country_code = '';
+                next.address_line_1 = '';
+                next.state_province_region = '';
+                next.city_municipality = '';
+                next.district_local_area = '';
+                next.postal_zip_code = '';
+                next.valid_id_type = '';
+                next.valid_id_number = '';
+                next.contact_number = '';
+            } else {
+                next.student_id_number = '';
+                next.school_email = '';
+                next.department = '';
+                next.course = '';
+                next.year_level = '';
+                next.email = '';
+                next.country = '';
+                next.country_code = '';
+                next.address_line_1 = '';
+                next.state_province_region = '';
+                next.city_municipality = '';
+                next.district_local_area = '';
+                next.postal_zip_code = '';
+                next.valid_id_type = '';
+                next.valid_id_number = '';
+                next.contact_number = '';
+            }
+            return next;
+        });
+
+        setUniqueness((prev) => ({
             ...prev,
-            role: newRole,
-            country: '',
-            country_code: '',
-            campus_id: '',
-            address: '',
-            student_id_number: '',
-            school_email: '',
-            department: '',
-            course: '',
-            year_level: '',
-            contact_number: '',
-            email: '',
-            password: '',
-            password_confirmation: '',
-        }));
-        setIsPhoneValid(false);
-        setUniqueness((previous) => ({
-            ...previous,
-            campus_id: { status: 'idle', message: '' },
             student_id_number: { status: 'idle', message: '' },
-            contact_number: { status: 'idle', message: '' },
+            valid_id_number: { status: 'idle', message: '' },
             email: { status: 'idle', message: '' },
+            contact_number: { status: 'idle', message: '' },
         }));
     };
 
-    const handleRegistrationCountryChange = (val) => {
+    const handleRegistrationCountryChange = (val, code) => {
+        const matched = findCountry(code || val);
         setF((prev) => ({
             ...prev,
-            country: val,
-            country_code: COUNTRY_LIST.find((country) => country.name === val)?.code || prev.country_code,
-        }));
-    };
-
-    const handleRegistrationIdChange = (e) => {
-        setF((prev) => ({
-            ...prev,
-            campus_id: e.target.value,
+            country: matched?.name || val || '',
+            country_code: matched?.code || '',
         }));
     };
 
     const handleRegistrationFieldChange = (field, value) => {
-        setF((prev) => ({ ...prev, [field]: value }));
+        setF((prev) => {
+            const next = { ...prev, [field]: value };
+            if (field === 'department') {
+                next.course = '';
+                next.year_level = '';
+            } else if (field === 'course') {
+                next.year_level = '';
+            }
+            return next;
+        });
     };
 
-    const handleRegistrationPhoneChange = (e164Value, valid) => {
+    const handleRegistrationPhoneChange = (e164Value, valid, meta = {}) => {
         setF((prev) => ({
             ...prev,
             contact_number: e164Value,
+            country_code: meta.country || prev.country_code,
         }));
         setIsPhoneValid(valid);
-    };
-
-    const handleRegistrationEmailChange = (e) => {
-        setF((prev) => ({
-            ...prev,
-            email: e.target.value,
-        }));
-    };
-
-    const handleRegistrationPasswordChange = (e) => {
-        setF((prev) => ({
-            ...prev,
-            password: e.target.value,
-        }));
-    };
-
-    const handleRegistrationConfirmPasswordChange = (e) => {
-        setF((prev) => ({
-            ...prev,
-            password_confirmation: e.target.value,
-        }));
     };
 
     let regPwdScore = 0;
@@ -1095,43 +1190,62 @@ function Auth({ register = false }) {
         setError('');
         setSuccessMessage('');
 
-        // Check if user saved email with Remember Me
         const rememberedEmail = localStorage.getItem('relieflink_remembered_email');
         if (rememberedEmail && targetMode === 'login') {
             setRemember(true);
             setF({
+                account_type: '',
+                role: '',
+                first_name: '',
+                middle_name: '',
+                last_name: '',
                 name: '',
                 email: rememberedEmail,
                 password: '',
                 password_confirmation: '',
-                role: '',
-                country: '',
-                campus_id: '',
-                address: '',
+                contact_number: '',
                 student_id_number: '',
                 school_email: '',
                 department: '',
                 course: '',
                 year_level: '',
-                contact_number: '',
+                country: '',
+                country_code: '',
+                address_line_1: '',
+                state_province_region: '',
+                city_municipality: '',
+                district_local_area: '',
+                postal_zip_code: '',
+                valid_id_type: '',
+                valid_id_number: '',
             });
         } else {
             setRemember(false);
             setF({
+                account_type: '',
+                role: '',
+                first_name: '',
+                middle_name: '',
+                last_name: '',
                 name: '',
                 email: '',
                 password: '',
                 password_confirmation: '',
-                role: '',
-                country: '',
-                campus_id: '',
-                address: '',
+                contact_number: '',
                 student_id_number: '',
                 school_email: '',
                 department: '',
                 course: '',
                 year_level: '',
-                contact_number: '',
+                country: '',
+                country_code: '',
+                address_line_1: '',
+                state_province_region: '',
+                city_municipality: '',
+                district_local_area: '',
+                postal_zip_code: '',
+                valid_id_type: '',
+                valid_id_number: '',
             });
         }
     }, [register]);
@@ -1159,62 +1273,187 @@ function Auth({ register = false }) {
         setError('');
         setSuccessMessage('');
 
-        if (mode === 'register' && !regIsFormValid) {
-            setError('Please complete each registration field in order before creating your account.');
-            setLoading(false);
-            return;
-        }
-
         if (mode === 'register') {
+            if (!f.account_type) {
+                setError('Please select an Account Type before continuing.');
+                setLoading(false);
+                return;
+            }
+            if (!f.first_name?.trim()) {
+                setError('First Name is required.');
+                setLoading(false);
+                return;
+            }
+            if (!f.last_name?.trim()) {
+                setError('Last Name is required.');
+                setLoading(false);
+                return;
+            }
+
+            if (f.account_type === 'beneficiary') {
+                if (!f.student_id_number?.trim() || !STUDENT_ID_REGEX.test(f.student_id_number.trim())) {
+                    setError('Please enter a valid Student ID Number in the format YY-###### (e.g., 21-010956).');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.school_email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.school_email.trim())) {
+                    setError('Please enter a valid Email Address.');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.department?.trim() || !BENEFICIARY_DEPARTMENTS.includes(f.department.trim())) {
+                    setError('Please select a valid department.');
+                    setLoading(false);
+                    return;
+                }
+                const allowedCourses = BENEFICIARY_DEPARTMENT_COURSES[f.department.trim()] || [];
+                if (!f.course?.trim() || !allowedCourses.includes(f.course.trim())) {
+                    setError('The selected course does not belong to the selected department. Please choose a valid course.');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.year_level?.trim() || !BENEFICIARY_YEAR_LEVELS.includes(f.year_level.trim())) {
+                    setError('Please select a valid year level.');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.contact_number?.trim() || !/^09[0-9]{9}$/.test(f.contact_number.trim())) {
+                    setError('Please enter a valid Philippine mobile number (09XXXXXXXXX).');
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            if (f.account_type === 'donor') {
+                if (!f.email?.trim()) {
+                    setError('Email Address is required.');
+                    setLoading(false);
+                    return;
+                }
+                if (!EMAIL_REGEX.test(f.email.trim()) || f.email.trim().includes('..')) {
+                    setError('Please enter a valid email address.');
+                    setLoading(false);
+                    return;
+                }
+                if (uniqueness.email.status === 'taken') {
+                    setError('This email address is already taken. Please use a different email address.');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.country?.trim() || f.country.trim().toLowerCase() === 'select your country' || f.country.trim().toLowerCase() === 'select country / region' || f.country.trim().toLowerCase() === 'enter your country/region' || f.country.trim().toLowerCase() === 'enter your country / region' || !findCountry(f.country || f.country_code)) {
+                    setError('Please select your Country / Region before continuing.');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.contact_number?.trim()) {
+                    setError('Contact Number is required.');
+                    setLoading(false);
+                    return;
+                }
+                if (!isPhoneValid) {
+                    setError('Please enter a valid contact number for the selected Country / Region.');
+                    setLoading(false);
+                    return;
+                }
+                if (uniqueness.contact_number.status === 'taken') {
+                    setError('This contact number is already taken. Please use a different contact number.');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.address_line_1?.trim()) {
+                    setError('Please enter your address.');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.valid_id_type?.trim()) {
+                    setError('Please select a valid ID type.');
+                    setLoading(false);
+                    return;
+                }
+                if (!f.valid_id_number?.trim()) {
+                    setError('Please enter your valid ID number.');
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            if (!regIsPasswordValid) {
+                setError('Please choose a password that meets all security requirements.');
+                setLoading(false);
+                return;
+            }
+
             if (f.password !== f.password_confirmation) {
                 setError('Passwords do not match. Please check and try again.');
                 setLoading(false);
                 return;
             }
-            if (f.password.length < 8) {
-                setError('Password must be at least 8 characters long.');
-                setLoading(false);
-                return;
-            }
         }
 
-        const submitPayload = mode === 'register' ? {
-            name: f.name.trim(),
-            email: f.email.trim(),
-            password: f.password,
-            password_confirmation: f.password_confirmation,
-            role: f.role,
-            country: f.country.trim() || null,
-            country_code: f.country_code?.trim() || null,
-            ...(f.role === 'donor' ? {
-                address: f.address.trim(),
-                campus_id: f.campus_id.trim(),
-            } : {
+        const fullName = `${f.first_name?.trim() || ''}${f.middle_name?.trim() ? ' ' + f.middle_name.trim() : ''} ${f.last_name?.trim() || ''}`.trim();
+
+        const submitPayload = mode === 'register' ? (
+            f.account_type === 'beneficiary' ? {
+                account_type: 'beneficiary',
+                role: 'beneficiary',
+                first_name: f.first_name.trim(),
+                middle_name: f.middle_name?.trim() || null,
+                last_name: f.last_name.trim(),
+                name: fullName,
                 student_id_number: f.student_id_number.trim(),
+                email: f.school_email.trim(),
                 school_email: f.school_email.trim(),
                 department: f.department.trim(),
                 course: f.course.trim(),
                 year_level: f.year_level.trim(),
-            }),
-            contact_number: f.contact_number.trim(),
-        } : f;
+                contact_number: f.contact_number.trim(),
+                password: f.password,
+                password_confirmation: f.password_confirmation,
+            } : {
+                account_type: 'donor',
+                role: 'donor',
+                first_name: f.first_name.trim(),
+                middle_name: f.middle_name?.trim() || null,
+                last_name: f.last_name.trim(),
+                name: fullName,
+                email: f.email.trim(),
+                contact_number: f.contact_number.trim(),
+                country: f.country?.trim() || 'Philippines',
+                country_code: f.country_code?.trim() || 'PH',
+                address_line_1: f.address_line_1.trim(),
+                state_province_region: f.state_province_region?.trim() || null,
+                city_municipality: f.city_municipality?.trim() || null,
+                district_local_area: f.district_local_area?.trim() || null,
+                postal_zip_code: f.postal_zip_code?.trim() || null,
+                address: [f.address_line_1, f.district_local_area, f.city_municipality, f.state_province_region, f.postal_zip_code, f.country].filter(Boolean).map(s => s.trim()).join(', '),
+                valid_id_type: f.valid_id_type.trim(),
+                valid_id_number: f.valid_id_number.trim(),
+                campus_id: f.valid_id_number.trim(),
+                password: f.password,
+                password_confirmation: f.password_confirmation,
+            }
+        ) : f;
 
         try {
             const u = await login(submitPayload, mode === 'register');
-            if (remember && mode === 'login') {
-                localStorage.setItem('relieflink_remembered_email', f.email);
-            } else {
-                localStorage.removeItem('relieflink_remembered_email');
+            if (mode === 'login') {
+                if (remember) {
+                    localStorage.setItem('relieflink_remembered_email', f.email);
+                    localStorage.setItem('relieflink_remember_me', 'true');
+                } else {
+                    localStorage.removeItem('relieflink_remembered_email');
+                    localStorage.removeItem('relieflink_remember_me');
+                }
             }
             navigate(getRoleDashboard(u.role), { replace: true });
-        } catch (e) {
-            const validationErrors = e.response?.data?.errors;
+        } catch (err) {
+            const validationErrors = err.response?.data?.errors;
             if (mode === 'register' && validationErrors) {
                 const messages = {
-                    name: validationErrors.name?.[0],
-                    campus_id: validationErrors.campus_id?.[0],
+                    valid_id_number: validationErrors.valid_id_number?.[0] || validationErrors.campus_id?.[0],
+                    student_id_number: validationErrors.student_id_number?.[0],
                     contact_number: validationErrors.contact_number?.[0],
-                    email: validationErrors.email?.[0],
+                    email: validationErrors.email?.[0] || validationErrors.school_email?.[0],
                 };
                 setUniqueness((previous) => {
                     const next = { ...previous };
@@ -1224,7 +1463,7 @@ function Auth({ register = false }) {
                     return next;
                 });
             }
-            setError(e.response?.data?.message || 'Unable to authenticate. Please check your credentials.');
+            setError(err.response?.data?.message || 'Unable to authenticate. Please check your inputs.');
         } finally {
             setLoading(false);
         }
@@ -1386,18 +1625,6 @@ function Auth({ register = false }) {
         }
     };
 
-    const getPasswordStrengthScore = (pwd) => {
-        if (!pwd) return 0;
-        let score = 0;
-        if (pwd.length >= 8) score += 1;
-        if (/[A-Z]/.test(pwd)) score += 1;
-        if (/[0-9]/.test(pwd)) score += 1;
-        if (/[^A-Za-z0-9]/.test(pwd)) score += 1;
-        return score;
-    };
-
-    const pwdScore = getPasswordStrengthScore(f.password);
-
     return (
         <main className="grid min-h-screen lg:grid-cols-2 text-[#2563EB]">
             {/* Left Hero Side Banner */}
@@ -1535,20 +1762,30 @@ function Auth({ register = false }) {
                                         setError('');
                                         setSuccessMessage('');
                                         setF({
+                                            account_type: '',
+                                            role: '',
+                                            first_name: '',
+                                            middle_name: '',
+                                            last_name: '',
                                             name: '',
                                             email: '',
                                             password: '',
                                             password_confirmation: '',
-                                            role: '',
-                                            country: '',
-                                            campus_id: '',
-                                            address: '',
+                                            contact_number: '',
                                             student_id_number: '',
                                             school_email: '',
                                             department: '',
                                             course: '',
                                             year_level: '',
-                                            contact_number: '',
+                                            country: 'Philippines',
+                                            country_code: 'PH',
+                                            address_line_1: '',
+                                            state_province_region: '',
+                                            city_municipality: '',
+                                            district_local_area: '',
+                                            postal_zip_code: '',
+                                            valid_id_type: '',
+                                            valid_id_number: '',
                                         });
                                     }}
                                 >
@@ -1572,267 +1809,951 @@ function Auth({ register = false }) {
                             </div>
 
                             <div className="space-y-3">
+                                {/* RANK #1: Account Type (ALWAYS VISIBLE & AT RANK #1) */}
                                 <div>
-                                    <label htmlFor="reg_name" className="block text-xs font-bold text-[#2563EB]">
-                                        Full Name <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <input
-                                        id="reg_name"
-                                        required
-                                        type="text"
-                                        placeholder="Enter your first name and last name"
-                                        className={`field mt-1 text-xs py-2 font-semibold ${uniqueness.name.status === 'taken' || uniqueness.name.status === 'error' ? 'border-red-500 ring-1 ring-red-500' : ''}`}
-                                        value={f.name}
-                                        onChange={handleRegistrationNameChange}
-                                        maxLength={255}
-                                    />
-                                    {f.name.length > 0 && !regNameValid && (
-                                        <p className="text-[11px] font-semibold text-[#2563EB]/70 mt-1">
-                                            Please enter both your first name and last name (e.g., Juan Dela Cruz).
-                                        </p>
-                                    )}
-                                    {renderDuplicateStatus('name')}
-                                </div>
-
-                                <div>
-                                    <label htmlFor="reg_role" className="block text-xs font-bold text-[#2563EB]">
+                                    <label htmlFor="reg_account_type" className="block text-xs font-bold text-[#2563EB]">
                                         Account Type <span className="text-[#22C55E]">*</span>
                                     </label>
                                     <select
-                                        id="reg_role"
-                                        className="field mt-1 text-xs py-2 font-semibold"
-                                        value={f.role}
-                                        onChange={handleRegistrationRoleChange}
+                                        id="reg_account_type"
+                                        className={`field mt-1 text-xs py-2 font-semibold ${!f.account_type ? 'border-amber-400 focus:border-[#2563EB]' : ''}`}
+                                        value={f.account_type}
+                                        onChange={handleRegistrationAccountTypeChange}
                                         required
                                     >
                                         <option value="" disabled hidden>Select account type</option>
-                                        <option value="beneficiary">Request Support (Beneficiary)</option>
-                                        <option value="donor">Make a Donation (Donor)</option>
+                                        <option value="beneficiary">Beneficiary (Student)</option>
+                                        <option value="donor">Donor</option>
                                     </select>
+                                    {!f.account_type && (
+                                        <p className="mt-1.5 text-xs font-semibold text-amber-600 flex items-center gap-1.5">
+                                            <svg className="w-4 h-4 shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/>
+                                            </svg>
+                                            <span>Please select an Account Type before continuing.</span>
+                                        </p>
+                                    )}
                                 </div>
 
-                                <div>
-                                    <label htmlFor="reg_country" className="block text-xs font-bold text-[#2563EB]">
-                                        Country <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <CountrySelect
-                                        id="reg_country"
-                                        value={f.country}
-                                        onChange={handleRegistrationCountryChange}
-                                        disabled={!regCanUseCountry}
-                                    />
-                                </div>
-
-                                {f.role === 'donor' && (
+                                {/* CASE 1: INITIAL FORM — BEFORE ACCOUNT TYPE IS SELECTED */}
+                                {f.account_type === '' && (
                                     <>
+                                        {/* Rank #2: First Name */}
                                         <div>
-                                            <label htmlFor="reg_address" className="block text-xs font-bold text-[#2563EB]">Address <span className="text-[#22C55E]">*</span></label>
-                                            <input id="reg_address" type="text" placeholder="Enter your address" className={`field mt-1 text-xs py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5`} value={f.address} onChange={(e) => handleRegistrationFieldChange('address', e.target.value)} disabled={!regCanUseAddress} maxLength={255} required />
+                                            <label htmlFor="reg_first_name_init" className="block text-xs font-bold text-[#2563EB]">
+                                                First Name <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_first_name_init"
+                                                type="text"
+                                                disabled
+                                                placeholder="Enter your first name"
+                                                className="field mt-1 text-xs py-2 font-semibold opacity-60 bg-gray-50 cursor-not-allowed"
+                                                value={f.first_name}
+                                                onChange={(e) => handleRegistrationFieldChange('first_name', e.target.value)}
+                                                maxLength={100}
+                                                required
+                                            />
                                         </div>
+
+                                        {/* Rank #3: Middle Name — Optional */}
                                         <div>
-                                            <label htmlFor="reg_campus_id" className="block text-xs font-bold text-[#2563EB]">Valid ID Number <span className="text-[#22C55E]">*</span></label>
-                                            <input id="reg_campus_id" type="text" placeholder="Enter your valid ID number" className={`field mt-1 text-xs py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5 ${uniqueness.campus_id.status === 'taken' || uniqueness.campus_id.status === 'error' ? 'border-red-500 ring-1 ring-red-500' : ''}`} value={f.campus_id} onChange={handleRegistrationIdChange} disabled={!regCanUseValidId} maxLength={50} required />
-                                            {renderDuplicateStatus('campus_id')}
+                                            <label htmlFor="reg_middle_name_init" className="block text-xs font-bold text-[#2563EB]">
+                                                Middle Name <span className="text-xs font-normal text-[#2563EB]/60">(Optional)</span>
+                                            </label>
+                                            <input
+                                                id="reg_middle_name_init"
+                                                type="text"
+                                                disabled
+                                                placeholder="Enter your middle name (optional)"
+                                                className="field mt-1 text-xs py-2 font-semibold opacity-60 bg-gray-50 cursor-not-allowed"
+                                                value={f.middle_name}
+                                                onChange={(e) => handleRegistrationFieldChange('middle_name', e.target.value)}
+                                                maxLength={100}
+                                            />
+                                        </div>
+
+                                        {/* Rank #4: Last Name */}
+                                        <div>
+                                            <label htmlFor="reg_last_name_init" className="block text-xs font-bold text-[#2563EB]">
+                                                Last Name <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_last_name_init"
+                                                type="text"
+                                                disabled
+                                                placeholder="Enter your last name"
+                                                className="field mt-1 text-xs py-2 font-semibold opacity-60 bg-gray-50 cursor-not-allowed"
+                                                value={f.last_name}
+                                                onChange={(e) => handleRegistrationFieldChange('last_name', e.target.value)}
+                                                maxLength={100}
+                                                required
+                                            />
+                                        </div>
+
+                                        {/* Rank #5: Contact Number */}
+                                        <div>
+                                            <label htmlFor="reg_contact_init" className="block text-xs font-bold text-[#2563EB]">
+                                                Contact Number <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <InternationalPhoneInput
+                                                id="reg_contact_init"
+                                                disabled
+                                                value={f.contact_number}
+                                                onChange={handleRegistrationPhoneChange}
+                                                defaultCountry="PH"
+                                                placeholder="Enter contact number"
+                                            />
+                                            {renderDuplicateStatus('contact_number')}
+                                        </div>
+
+                                        {/* Rank #6: Password */}
+                                        <div>
+                                            <label htmlFor="reg_pwd_init" className="block text-xs font-bold text-[#2563EB]">
+                                                Password <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <div className="relative mt-1">
+                                                <input
+                                                    id="reg_pwd_init"
+                                                    required
+                                                    disabled
+                                                    minLength={8}
+                                                    maxLength={64}
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    autoComplete="new-password"
+                                                    placeholder="Create a password"
+                                                    className="field text-xs py-2 pr-10 font-semibold opacity-60 bg-gray-50 cursor-not-allowed"
+                                                    value={f.password}
+                                                    onChange={(e) => handleRegistrationFieldChange('password', e.target.value)}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    tabIndex={-1}
+                                                    disabled
+                                                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] bg-transparent border-0 p-1 cursor-not-allowed opacity-40 transition"
+                                                >
+                                                    {showPassword ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            </div>
+
+                                            {/* Real-time Requirement Checklist */}
+                                            <div className="mt-2.5 rounded-xl border border-[#2563EB] bg-white p-3 space-y-1.5 text-xs">
+                                                <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#2563EB] mb-1">
+                                                    Password Security Requirements:
+                                                </p>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${regHasLength ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{regHasLength ? '✓' : '•'}</span>
+                                                    <span>8 to 64 characters in length</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regHasUpper && regHasLower) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{(regHasUpper && regHasLower) ? '✓' : '•'}</span>
+                                                    <span>Contains uppercase (A-Z) & lowercase (a-z) letters</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regHasNumber && regHasSpecial) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{(regHasNumber && regHasSpecial) ? '✓' : '•'}</span>
+                                                    <span>Contains numbers (0-9) & special characters (!@#$...)</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Rank #7: Confirm Password */}
+                                        <div>
+                                            <label htmlFor="reg_confirm_init" className="block text-xs font-bold text-[#2563EB]">
+                                                Confirm Password <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <div className="relative mt-1">
+                                                <input
+                                                    id="reg_confirm_init"
+                                                    required
+                                                    disabled
+                                                    minLength={8}
+                                                    maxLength={64}
+                                                    type={showConfirmPassword ? 'text' : 'password'}
+                                                    autoComplete="new-password"
+                                                    placeholder="Re-enter your password"
+                                                    className="field text-xs py-2 pr-10 font-semibold opacity-60 bg-gray-50 cursor-not-allowed"
+                                                    value={f.password_confirmation}
+                                                    onChange={(e) => handleRegistrationFieldChange('password_confirmation', e.target.value)}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    tabIndex={-1}
+                                                    disabled
+                                                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] bg-transparent border-0 p-1 cursor-not-allowed opacity-40 transition"
+                                                >
+                                                    {showConfirmPassword ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            </div>
+                                            {f.password_confirmation && (
+                                                <div className={`mt-1 flex items-center gap-1.5 text-[11px] font-bold ${regMatchesConfirm ? 'text-[#22C55E]' : 'text-red-500'}`}>
+                                                    <span className="font-black">{regMatchesConfirm ? '✓ Passwords match' : '✕ Passwords do not match.'}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </>
                                 )}
 
-                                {f.role === 'beneficiary' && (
+                                {/* CASE 2: WHEN ACCOUNT TYPE = BENEFICIARY */}
+                                {f.account_type === 'beneficiary' && (
                                     <>
+                                        {/* Rank #2: First Name */}
                                         <div>
-                                            <label htmlFor="reg_student_id" className="block text-xs font-bold text-[#2563EB]">Student ID Number <span className="text-[#22C55E]">*</span></label>
-                                            <input id="reg_student_id" type="text" placeholder="Enter your student ID number" className={`field mt-1 text-xs py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5 ${uniqueness.student_id_number?.status === 'taken' || uniqueness.student_id_number?.status === 'error' ? 'border-red-500 ring-1 ring-red-500' : ''}`} value={f.student_id_number} onChange={(e) => handleRegistrationFieldChange('student_id_number', e.target.value)} disabled={!regCanUseStudentId} maxLength={50} required />
+                                            <label htmlFor="reg_first_name_ben" className="block text-xs font-bold text-[#2563EB]">
+                                                First Name <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_first_name_ben"
+                                                type="text"
+                                                placeholder="Enter your first name"
+                                                className="field mt-1 text-xs py-2 font-semibold"
+                                                value={f.first_name}
+                                                onChange={(e) => handleRegistrationFieldChange('first_name', e.target.value)}
+                                                maxLength={100}
+                                                required
+                                            />
+                                        </div>
+
+                                        {/* Rank #3: Middle Name — Optional */}
+                                        <div>
+                                            <label htmlFor="reg_middle_name_ben" className="block text-xs font-bold text-[#2563EB]">
+                                                Middle Name <span className="text-xs font-normal text-[#2563EB]/60">(Optional)</span>
+                                            </label>
+                                            <input
+                                                id="reg_middle_name_ben"
+                                                type="text"
+                                                placeholder="Enter your middle name (optional)"
+                                                className="field mt-1 text-xs py-2 font-semibold"
+                                                value={f.middle_name}
+                                                onChange={(e) => handleRegistrationFieldChange('middle_name', e.target.value)}
+                                                maxLength={100}
+                                            />
+                                        </div>
+
+                                        {/* Rank #4: Last Name */}
+                                        <div>
+                                            <label htmlFor="reg_last_name_ben" className="block text-xs font-bold text-[#2563EB]">
+                                                Last Name <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_last_name_ben"
+                                                type="text"
+                                                placeholder="Enter your last name"
+                                                className="field mt-1 text-xs py-2 font-semibold"
+                                                value={f.last_name}
+                                                onChange={(e) => handleRegistrationFieldChange('last_name', e.target.value)}
+                                                maxLength={100}
+                                                required
+                                            />
+                                        </div>
+
+                                        {/* Rank #5: Student ID Number */}
+                                        <div>
+                                            <label htmlFor="reg_student_id" className="block text-xs font-bold text-[#2563EB]">
+                                                Student ID Number <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_student_id"
+                                                type="text"
+                                                disabled={!canEnterStudentId}
+                                                placeholder="e.g. 21-010956"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterStudentId ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''} ${uniqueness.student_id_number?.status === 'taken' || uniqueness.student_id_number?.status === 'error' || (f.student_id_number && !STUDENT_ID_REGEX.test(f.student_id_number.trim())) ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                                                value={f.student_id_number}
+                                                onChange={(e) => handleRegistrationFieldChange('student_id_number', e.target.value)}
+                                                maxLength={9}
+                                                required
+                                            />
+                                            {f.student_id_number && !STUDENT_ID_REGEX.test(f.student_id_number.trim()) && (
+                                                <p className="mt-1 text-[11px] font-semibold text-red-600">
+                                                    Please enter a valid Student ID Number in the format YY-###### (e.g., 21-010956).
+                                                </p>
+                                            )}
                                             {renderDuplicateStatus('student_id_number')}
                                         </div>
+
+                                        {/* Rank #6: Email Address */}
                                         <div>
-                                            <label htmlFor="reg_school_email" className="block text-xs font-bold text-[#2563EB]">School Email Address <span className="text-[#22C55E]">*</span></label>
-                                            <input id="reg_school_email" type="email" placeholder="Enter your school email address" className={`field mt-1 text-xs py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5`} value={f.school_email} onChange={(e) => handleRegistrationFieldChange('school_email', e.target.value)} disabled={!regCanUseSchoolEmail} maxLength={255} required />
+                                            <label htmlFor="reg_school_email" className="block text-xs font-bold text-[#2563EB]">
+                                                Email Address <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_school_email"
+                                                type="email"
+                                                disabled={!canEnterBeneficiaryEmail}
+                                                placeholder="e.g. student@tmc.edu.ph"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterBeneficiaryEmail ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''} ${uniqueness.email?.status === 'taken' || uniqueness.email?.status === 'error' ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                                                value={f.school_email}
+                                                onChange={(e) => handleRegistrationFieldChange('school_email', e.target.value)}
+                                                maxLength={255}
+                                                required
+                                            />
+                                            <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/70">
+                                                Beneficiary accounts are strictly for Trinidad Municipal College students.
+                                            </p>
+                                            {renderDuplicateStatus('email')}
                                         </div>
+
+                                        {/* Rank #7: Department */}
                                         <div>
-                                            <label htmlFor="reg_department" className="block text-xs font-bold text-[#2563EB]">Department <span className="text-[#22C55E]">*</span></label>
-                                            <input id="reg_department" type="text" placeholder="Enter your department" className={`field mt-1 text-xs py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5`} value={f.department} onChange={(e) => handleRegistrationFieldChange('department', e.target.value)} disabled={!regCanUseDepartment} maxLength={255} required />
+                                            <label htmlFor="reg_department" className="block text-xs font-bold text-[#2563EB]">
+                                                Department <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <select
+                                                id="reg_department"
+                                                disabled={!canEnterDepartment}
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDepartment ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.department}
+                                                onChange={(e) => handleRegistrationFieldChange('department', e.target.value)}
+                                                required
+                                            >
+                                                <option value="" disabled hidden>Select Department</option>
+                                                {BENEFICIARY_DEPARTMENTS.map((dept) => (
+                                                    <option key={dept} value={dept}>{dept}</option>
+                                                ))}
+                                            </select>
                                         </div>
+
+                                        {/* Rank #8: Course */}
                                         <div>
-                                            <label htmlFor="reg_course" className="block text-xs font-bold text-[#2563EB]">Course <span className="text-[#22C55E]">*</span></label>
-                                            <input id="reg_course" type="text" placeholder="Enter your course" className={`field mt-1 text-xs py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5`} value={f.course} onChange={(e) => handleRegistrationFieldChange('course', e.target.value)} disabled={!regCanUseCourse} maxLength={255} required />
+                                            <label htmlFor="reg_course" className="block text-xs font-bold text-[#2563EB]">
+                                                Course <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <select
+                                                id="reg_course"
+                                                disabled={!canEnterCourse}
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterCourse ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.course}
+                                                onChange={(e) => handleRegistrationFieldChange('course', e.target.value)}
+                                                required
+                                            >
+                                                <option value="" disabled hidden>{f.department ? 'Select Course' : 'Select Department First'}</option>
+                                                {(BENEFICIARY_DEPARTMENT_COURSES[f.department] || []).map((crs) => (
+                                                    <option key={crs} value={crs}>{crs}</option>
+                                                ))}
+                                            </select>
                                         </div>
+
+                                        {/* Rank #9: Year Level */}
                                         <div>
-                                            <label htmlFor="reg_year_level" className="block text-xs font-bold text-[#2563EB]">Year Level <span className="text-[#22C55E]">*</span></label>
-                                            <input id="reg_year_level" type="text" placeholder="e.g., 1st Year" className={`field mt-1 text-xs py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5`} value={f.year_level} onChange={(e) => handleRegistrationFieldChange('year_level', e.target.value)} disabled={!regCanUseYearLevel} maxLength={50} required />
+                                            <label htmlFor="reg_year_level" className="block text-xs font-bold text-[#2563EB]">
+                                                Year Level <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <select
+                                                id="reg_year_level"
+                                                disabled={!canEnterYearLevel}
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterYearLevel ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.year_level}
+                                                onChange={(e) => handleRegistrationFieldChange('year_level', e.target.value)}
+                                                required
+                                            >
+                                                <option value="" disabled hidden>Select Year Level</option>
+                                                {BENEFICIARY_YEAR_LEVELS.map((yr) => (
+                                                    <option key={yr} value={yr}>{yr}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Rank #10: Contact Number (Local Philippine Mobile 09XXXXXXXXX) */}
+                                        <div>
+                                            <label htmlFor="reg_contact_ben" className="block text-xs font-bold text-[#2563EB]">
+                                                Contact Number <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_contact_ben"
+                                                type="tel"
+                                                inputMode="numeric"
+                                                disabled={!canEnterBeneficiaryContact}
+                                                placeholder="09XXXXXXXXX"
+                                                minLength={11}
+                                                maxLength={11}
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterBeneficiaryContact ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''} ${uniqueness.contact_number?.status === 'taken' || uniqueness.contact_number?.status === 'error' ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                                                value={f.contact_number}
+                                                onChange={(e) => {
+                                                    const cleanDigits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                                                    handleRegistrationFieldChange('contact_number', cleanDigits);
+                                                }}
+                                                required
+                                            />
+                                            <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/70">
+                                                Enter an 11-digit Philippine mobile number.
+                                            </p>
+                                            {renderDuplicateStatus('contact_number')}
+                                        </div>
+
+                                        {/* Rank #11: Password */}
+                                        <div>
+                                            <label htmlFor="reg_pwd_ben" className="block text-xs font-bold text-[#2563EB]">
+                                                Password <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <div className="relative mt-1">
+                                                <input
+                                                    id="reg_pwd_ben"
+                                                    required
+                                                    disabled={!canEnterBeneficiaryPassword}
+                                                    minLength={8}
+                                                    maxLength={64}
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    autoComplete="new-password"
+                                                    placeholder="Create a password"
+                                                    className={`field text-xs py-2 pr-10 font-semibold ${!canEnterBeneficiaryPassword ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                    value={f.password}
+                                                    onChange={(e) => handleRegistrationFieldChange('password', e.target.value)}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    tabIndex={-1}
+                                                    disabled={!canEnterBeneficiaryPassword}
+                                                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] bg-transparent border-0 p-1 cursor-pointer transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                >
+                                                    {showPassword ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            </div>
+
+                                            {/* Password Strength Meter */}
+                                            {f.password && (
+                                                <div className="mt-2 space-y-1">
+                                                    <div className="flex justify-between text-[11px] font-bold text-[#2563EB]">
+                                                        <span>Password Strength:</span>
+                                                        <span className={`font-extrabold ${regPwdScore >= 3 ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                            {regStrengthLabel}
+                                                        </span>
+                                                    </div>
+                                                    <div className="h-1.5 w-full rounded-full border border-[#2563EB] bg-white overflow-hidden flex">
+                                                        <div
+                                                            className={`h-full transition-all duration-300 ${regPwdScore >= 3 ? 'bg-[#22C55E]' : 'bg-[#2563EB]'}`}
+                                                            style={{ width: `${(regPwdScore / 4) * 100}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Real-time Requirement Checklist */}
+                                            <div className="mt-2.5 rounded-xl border border-[#2563EB] bg-white p-3 space-y-1.5 text-xs">
+                                                <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#2563EB] mb-1">
+                                                    Password Security Requirements:
+                                                </p>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${regHasLength ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{regHasLength ? '✓' : '•'}</span>
+                                                    <span>8 to 64 characters in length</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regHasUpper && regHasLower) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{(regHasUpper && regHasLower) ? '✓' : '•'}</span>
+                                                    <span>Contains uppercase (A-Z) & lowercase (a-z) letters</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regHasNumber && regHasSpecial) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{(regHasNumber && regHasSpecial) ? '✓' : '•'}</span>
+                                                    <span>Contains numbers (0-9) & special characters (!@#$...)</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regNoSpaces && regNotWeak && regNoPersonal) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{(regNoSpaces && regNotWeak && regNoPersonal) ? '✓' : '•'}</span>
+                                                    <span>No personal info (name/email), spaces, or common passwords</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Rank #12: Confirm Password */}
+                                        <div>
+                                            <label htmlFor="reg_confirm_ben" className="block text-xs font-bold text-[#2563EB]">
+                                                Confirm Password <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <div className="relative mt-1">
+                                                <input
+                                                    id="reg_confirm_ben"
+                                                    required
+                                                    disabled={!canEnterBeneficiaryConfirm}
+                                                    minLength={8}
+                                                    maxLength={64}
+                                                    type={showConfirmPassword ? 'text' : 'password'}
+                                                    autoComplete="new-password"
+                                                    placeholder="Re-enter your password"
+                                                    className={`field text-xs py-2 pr-10 font-semibold ${!canEnterBeneficiaryConfirm ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                    value={f.password_confirmation}
+                                                    onChange={(e) => handleRegistrationFieldChange('password_confirmation', e.target.value)}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    tabIndex={-1}
+                                                    disabled={!canEnterBeneficiaryConfirm}
+                                                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] bg-transparent border-0 p-1 cursor-pointer transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                >
+                                                    {showConfirmPassword ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            </div>
+                                            {f.password_confirmation && (
+                                                <div className={`mt-1 flex items-center gap-1.5 text-[11px] font-bold ${regMatchesConfirm ? 'text-[#22C55E]' : 'text-red-500'}`}>
+                                                    <span className="font-black">{regMatchesConfirm ? '✓ Passwords match' : '✕ Passwords do not match.'}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </>
                                 )}
 
-                                <div>
-                                    <label htmlFor="reg_contact_number" className="block text-xs font-bold text-[#2563EB]">
-                                        Contact Number <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <InternationalPhoneInput
-                                        id="reg_contact_number"
-                                        value={f.contact_number}
-                                        onChange={handleRegistrationPhoneChange}
-                                        disabled={!regCanUseContact}
-                                        defaultCountry={COUNTRY_LIST.find((country) => country.name === f.country)?.code || 'PH'}
-                                        placeholder="Enter contact number"
-                                    />
-                                    {renderDuplicateStatus('contact_number')}
-                                </div>
-
-                                <div>
-                                    <label htmlFor="reg_email" className="block text-xs font-bold text-[#2563EB]">
-                                        Email Address <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <input
-                                        id="reg_email"
-                                        required
-                                        type="email"
-                                        placeholder="Enter your email address"
-                                        className={`field mt-1 text-xs py-2 font-semibold ${uniqueness.email.status === 'taken' || uniqueness.email.status === 'error' ? 'border-red-500 ring-1 ring-red-500' : ''} ${!regCanUseEmail ? 'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5' : ''}`}
-                                        value={f.email}
-                                        onChange={handleRegistrationEmailChange}
-                                        disabled={!regCanUseEmail}
-                                        maxLength={255}
-                                    />
-                                    {renderDuplicateStatus('email')}
-                                </div>
-
-                                <div>
-                                    <label htmlFor="reg_password" className="block text-xs font-bold text-[#2563EB]">
-                                        Password <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <div className="relative mt-1">
-                                        <input
-                                            id="reg_password"
-                                            required
-                                            minLength={8}
-                                            maxLength={64}
-                                            type={showPassword ? 'text' : 'password'}
-                                            autoComplete="new-password"
-                                            placeholder="Create a password"
-                                            className={`field text-xs py-2 pr-10 font-semibold ${!regCanUsePassword ? 'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5' : ''}`}
-                                            value={f.password}
-                                            onChange={handleRegistrationPasswordChange}
-                                            disabled={!regCanUsePassword}
-                                        />
-                                        <button
-                                            type="button"
-                                            tabIndex={-1}
-                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                            disabled={!regCanUsePassword}
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] disabled:opacity-40 disabled:cursor-not-allowed bg-transparent border-0 p-1 cursor-pointer transition"
-                                        >
-                                            {showPassword ? (
-                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
-                                                </svg>
-                                            ) : (
-                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                                </svg>
+                                {/* CASE 3: WHEN ACCOUNT TYPE = DONOR */}
+                                {f.account_type === 'donor' && (
+                                    <>
+                                        {/* Rank #2: First Name */}
+                                        <div>
+                                            <label htmlFor="reg_first_name_donor" className="block text-xs font-bold text-[#2563EB]">
+                                                First Name <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_first_name_donor"
+                                                type="text"
+                                                placeholder="Enter your first name"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!isFirstNameValid && isLastNameValid ? 'border-amber-400 focus:border-[#2563EB]' : ''}`}
+                                                value={f.first_name}
+                                                onChange={(e) => handleRegistrationFieldChange('first_name', e.target.value)}
+                                                maxLength={100}
+                                                required
+                                            />
+                                            {!isFirstNameValid && isLastNameValid && (
+                                                <p className="mt-1 text-[11px] font-semibold text-amber-600 flex items-center gap-1">
+                                                    <span>First Name is required before proceeding to Email Address.</span>
+                                                </p>
                                             )}
-                                        </button>
-                                    </div>
+                                        </div>
 
-                                    {/* Password Strength Meter */}
-                                    {f.password && (
-                                        <div className="mt-2 space-y-1">
-                                            <div className="flex justify-between text-[11px] font-bold text-[#2563EB]">
-                                                <span>Password Strength:</span>
-                                                <span className={`font-extrabold ${regPwdScore >= 3 ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
-                                                    {regStrengthLabel}
-                                                </span>
-                                            </div>
-                                            <div className="h-1.5 w-full rounded-full border border-[#2563EB] bg-white overflow-hidden flex">
-                                                <div
-                                                    className={`h-full transition-all duration-300 ${regPwdScore >= 3 ? 'bg-[#22C55E]' : 'bg-[#2563EB]'}`}
-                                                    style={{ width: `${(regPwdScore / 4) * 100}%` }}
+                                        {/* Rank #3: Middle Name — Optional */}
+                                        <div>
+                                            <label htmlFor="reg_middle_name_donor" className="block text-xs font-bold text-[#2563EB]">
+                                                Middle Name <span className="text-xs font-normal text-[#2563EB]/60">(Optional)</span>
+                                            </label>
+                                            <input
+                                                id="reg_middle_name_donor"
+                                                type="text"
+                                                placeholder="Enter your middle name (optional)"
+                                                className="field mt-1 text-xs py-2 font-semibold"
+                                                value={f.middle_name}
+                                                onChange={(e) => handleRegistrationFieldChange('middle_name', e.target.value)}
+                                                maxLength={100}
+                                            />
+                                        </div>
+
+                                        {/* Rank #4: Last Name */}
+                                        <div>
+                                            <label htmlFor="reg_last_name_donor" className="block text-xs font-bold text-[#2563EB]">
+                                                Last Name <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_last_name_donor"
+                                                type="text"
+                                                placeholder="Enter your last name"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${isFirstNameValid && !isLastNameValid ? 'border-amber-400 focus:border-[#2563EB]' : ''}`}
+                                                value={f.last_name}
+                                                onChange={(e) => handleRegistrationFieldChange('last_name', e.target.value)}
+                                                maxLength={100}
+                                                required
+                                            />
+                                            {!regNamesValid && (
+                                                <p className="mt-1 text-[11px] font-semibold text-amber-600 flex items-center gap-1">
+                                                    {!isFirstNameValid && !isLastNameValid
+                                                        ? 'Please complete First Name and Last Name to proceed to Email Address.'
+                                                        : (isFirstNameValid && !isLastNameValid
+                                                            ? 'Last Name is required before proceeding to Email Address.'
+                                                            : '')}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Rank #5: Email Address */}
+                                        <div>
+                                            <label htmlFor="reg_email_donor" className="block text-xs font-bold text-[#2563EB]">
+                                                Email Address <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_email_donor"
+                                                type="email"
+                                                disabled={!canEnterDonorEmail}
+                                                placeholder="Enter your email address"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDonorEmail ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''} ${
+                                                    canEnterDonorEmail && isDonorEmailEmpty
+                                                        ? 'border-amber-400 focus:border-[#2563EB]'
+                                                        : canEnterDonorEmail && (!isDonorEmailFormatValid || uniqueness.email?.status === 'taken' || uniqueness.email?.status === 'error')
+                                                            ? 'border-red-500 ring-1 ring-red-500'
+                                                            : canEnterDonorEmail && isDonorEmailAvailable
+                                                                ? 'border-[#22C55E] focus:border-[#22C55E]'
+                                                                : ''
+                                                }`}
+                                                value={f.email}
+                                                onChange={(e) => handleRegistrationFieldChange('email', e.target.value)}
+                                                maxLength={255}
+                                                required
+                                            />
+                                            {canEnterDonorEmail && isDonorEmailEmpty && (
+                                                <p className="mt-1 text-[11px] font-semibold text-amber-600 flex items-center gap-1">
+                                                    <span>Email Address is required.</span>
+                                                </p>
+                                            )}
+                                            {canEnterDonorEmail && !isDonorEmailEmpty && !isDonorEmailFormatValid && (
+                                                <p className="mt-1 text-[11px] font-semibold text-red-600 flex items-center gap-1">
+                                                    <span>Please enter a valid email address.</span>
+                                                </p>
+                                            )}
+                                            {canEnterDonorEmail && isDonorEmailFormatValid && uniqueness.email?.status === 'checking' && (
+                                                <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/70">Checking availability…</p>
+                                            )}
+                                            {canEnterDonorEmail && isDonorEmailFormatValid && uniqueness.email?.status === 'taken' && (
+                                                <p className="mt-1 text-[11px] font-semibold text-red-600">
+                                                    {uniqueness.email.message || 'This email address is already taken. Please use a different email address.'}
+                                                </p>
+                                            )}
+                                            {canEnterDonorEmail && isDonorEmailFormatValid && uniqueness.email?.status === 'available' && (
+                                                <p className="mt-1 text-[11px] font-semibold text-[#22C55E] flex items-center gap-1">
+                                                    <span>✓ Email address is available.</span>
+                                                </p>
+                                            )}
+                                            {canEnterDonorEmail && isDonorEmailFormatValid && uniqueness.email?.status === 'error' && (
+                                                <p className="mt-1 text-[11px] font-semibold text-red-600">
+                                                    {uniqueness.email.message || 'Could not verify this email address.'}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Rank #6: Country / Region */}
+                                        <div>
+                                            <label htmlFor="reg_country_donor" className="block text-xs font-bold text-[#2563EB]">
+                                                Country / Region <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <CountrySelect
+                                                id="reg_country_donor"
+                                                disabled={!canEnterDonorCountry}
+                                                value={f.country}
+                                                onChange={handleRegistrationCountryChange}
+                                            />
+                                            {canEnterDonorCountry && !regCountryValid && (
+                                                <p className="mt-1 text-[11px] font-semibold text-amber-600 flex items-center gap-1">
+                                                    <span>Please select your Country / Region before continuing.</span>
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Rank #7: Contact Number */}
+                                        <div>
+                                            <label htmlFor="reg_contact_donor" className="block text-xs font-bold text-[#2563EB]">
+                                                Contact Number <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <InternationalPhoneInput
+                                                id="reg_contact_donor"
+                                                disabled={!canEnterDonorContact}
+                                                value={f.contact_number}
+                                                onChange={handleRegistrationPhoneChange}
+                                                defaultCountry={f.country_code || findCountry(f.country)?.code || ''}
+                                                placeholder={!canEnterDonorContact ? 'Select Country / Region first' : 'Enter contact number'}
+                                            />
+                                            {canEnterDonorContact && isPhoneValid && uniqueness.contact_number?.status === 'available' && (
+                                                <p className="mt-1 text-[11px] font-semibold text-[#22C55E] flex items-center gap-1">
+                                                    <span>✓ Contact Number is available.</span>
+                                                </p>
+                                            )}
+                                            {renderDuplicateStatus('contact_number')}
+                                        </div>
+
+                                        {/* Rank #8: Address Line 1 */}
+                                        <div>
+                                            <label htmlFor="reg_address_line_1" className="block text-xs font-bold text-[#2563EB]">
+                                                Address Line 1 <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_address_line_1"
+                                                type="text"
+                                                disabled={!canEnterDonorSubsequent}
+                                                placeholder="House/Unit/Building No., Street Name"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.address_line_1}
+                                                onChange={(e) => handleRegistrationFieldChange('address_line_1', e.target.value)}
+                                                maxLength={255}
+                                                required
+                                            />
+                                        </div>
+
+                                        {/* Rank #9: State / Province / Region */}
+                                        <div>
+                                            <label htmlFor="reg_state_province" className="block text-xs font-bold text-[#2563EB]">
+                                                State / Province / Region
+                                            </label>
+                                            <input
+                                                id="reg_state_province"
+                                                type="text"
+                                                disabled={!canEnterDonorSubsequent}
+                                                placeholder="Enter your state, province, or region"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.state_province_region}
+                                                onChange={(e) => handleRegistrationFieldChange('state_province_region', e.target.value)}
+                                                maxLength={255}
+                                                required
+                                            />
+                                        </div>
+
+                                        {/* Rank #10: City / Town / Municipality */}
+                                        <div>
+                                            <label htmlFor="reg_city_municipality" className="block text-xs font-bold text-[#2563EB]">
+                                                City / Town / Municipality
+                                            </label>
+                                            <input
+                                                id="reg_city_municipality"
+                                                type="text"
+                                                disabled={!canEnterDonorSubsequent}
+                                                placeholder="Enter your city, town, or municipality"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.city_municipality}
+                                                onChange={(e) => handleRegistrationFieldChange('city_municipality', e.target.value)}
+                                                maxLength={255}
+                                            />
+                                        </div>
+
+                                        {/* Rank #11: District / Local Area */}
+                                        <div>
+                                            <label htmlFor="reg_district_local" className="block text-xs font-bold text-[#2563EB]">
+                                                District / Local Area <span className="text-xs font-normal text-[#2563EB]/60">(Optional)</span>
+                                            </label>
+                                            <input
+                                                id="reg_district_local"
+                                                type="text"
+                                                disabled={!canEnterDonorSubsequent}
+                                                placeholder="Enter your district or local area (optional)"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.district_local_area}
+                                                onChange={(e) => handleRegistrationFieldChange('district_local_area', e.target.value)}
+                                                maxLength={255}
+                                            />
+                                        </div>
+
+                                        {/* Rank #12: Postal / ZIP Code */}
+                                        <div>
+                                            <label htmlFor="reg_postal_zip" className="block text-xs font-bold text-[#2563EB]">
+                                                Postal / ZIP Code
+                                            </label>
+                                            <input
+                                                id="reg_postal_zip"
+                                                type="text"
+                                                disabled={!canEnterDonorSubsequent}
+                                                placeholder="Enter your postal or ZIP code"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.postal_zip_code}
+                                                onChange={(e) => handleRegistrationFieldChange('postal_zip_code', e.target.value)}
+                                                maxLength={50}
+                                            />
+                                        </div>
+
+                                        {/* Rank #13: Valid ID Type */}
+                                        <div>
+                                            <label htmlFor="reg_valid_id_type" className="block text-xs font-bold text-[#2563EB]">
+                                                Valid ID Type <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <select
+                                                id="reg_valid_id_type"
+                                                disabled={!canEnterDonorSubsequent}
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                value={f.valid_id_type}
+                                                onChange={(e) => handleRegistrationFieldChange('valid_id_type', e.target.value)}
+                                                required
+                                            >
+                                                <option value="" disabled hidden>Select Valid ID Type</option>
+                                                {VALID_ID_TYPES.map((type) => (
+                                                    <option key={type} value={type}>{type}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Rank #14: Valid ID Number */}
+                                        <div>
+                                            <label htmlFor="reg_valid_id_number" className="block text-xs font-bold text-[#2563EB]">
+                                                Valid ID Number <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <input
+                                                id="reg_valid_id_number"
+                                                type="text"
+                                                disabled={!canEnterDonorSubsequent}
+                                                placeholder="Enter your valid ID number"
+                                                className={`field mt-1 text-xs py-2 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''} ${uniqueness.valid_id_number?.status === 'taken' || uniqueness.valid_id_number?.status === 'error' ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                                                value={f.valid_id_number}
+                                                onChange={(e) => handleRegistrationFieldChange('valid_id_number', e.target.value)}
+                                                maxLength={50}
+                                                required
+                                            />
+                                            {renderDuplicateStatus('valid_id_number')}
+                                        </div>
+
+                                        {/* Rank #15: Password */}
+                                        <div>
+                                            <label htmlFor="reg_pwd_donor" className="block text-xs font-bold text-[#2563EB]">
+                                                Password <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <div className="relative mt-1">
+                                                <input
+                                                    id="reg_pwd_donor"
+                                                    required
+                                                    disabled={!canEnterDonorSubsequent}
+                                                    minLength={8}
+                                                    maxLength={64}
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    autoComplete="new-password"
+                                                    placeholder="Create a password"
+                                                    className={`field text-xs py-2 pr-10 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                    value={f.password}
+                                                    onChange={(e) => handleRegistrationFieldChange('password', e.target.value)}
                                                 />
+                                                <button
+                                                    type="button"
+                                                    tabIndex={-1}
+                                                    disabled={!canEnterDonorSubsequent}
+                                                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] bg-transparent border-0 p-1 cursor-pointer transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                >
+                                                    {showPassword ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            </div>
+
+                                            {/* Password Strength Meter */}
+                                            {f.password && (
+                                                <div className="mt-2 space-y-1">
+                                                    <div className="flex justify-between text-[11px] font-bold text-[#2563EB]">
+                                                        <span>Password Strength:</span>
+                                                        <span className={`font-extrabold ${regPwdScore >= 3 ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                            {regStrengthLabel}
+                                                        </span>
+                                                    </div>
+                                                    <div className="h-1.5 w-full rounded-full border border-[#2563EB] bg-white overflow-hidden flex">
+                                                        <div
+                                                            className={`h-full transition-all duration-300 ${regPwdScore >= 3 ? 'bg-[#22C55E]' : 'bg-[#2563EB]'}`}
+                                                            style={{ width: `${(regPwdScore / 4) * 100}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Real-time Requirement Checklist */}
+                                            <div className="mt-2.5 rounded-xl border border-[#2563EB] bg-white p-3 space-y-1.5 text-xs">
+                                                <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#2563EB] mb-1">
+                                                    Password Security Requirements:
+                                                </p>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${regHasLength ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{regHasLength ? '✓' : '•'}</span>
+                                                    <span>8 to 64 characters in length</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regHasUpper && regHasLower) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{(regHasUpper && regHasLower) ? '✓' : '•'}</span>
+                                                    <span>Contains uppercase (A-Z) & lowercase (a-z) letters</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regHasNumber && regHasSpecial) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{(regHasNumber && regHasSpecial) ? '✓' : '•'}</span>
+                                                    <span>Contains numbers (0-9) & special characters (!@#$...)</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regNoSpaces && regNotWeak && regNoPersonal) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                                    <span className="font-black">{(regNoSpaces && regNotWeak && regNoPersonal) ? '✓' : '•'}</span>
+                                                    <span>No personal info (name/email), spaces, or common passwords</span>
+                                                </div>
                                             </div>
                                         </div>
-                                    )}
 
-                                    {/* Real-time Requirement Checklist */}
-                                    <div className="mt-2.5 rounded-xl border border-[#2563EB] bg-white p-3 space-y-1.5 text-xs">
-                                        <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#2563EB] mb-1">
-                                            Password Security Requirements:
-                                        </p>
-
-                                        <div className={`flex items-center gap-1.5 text-[11px] font-bold ${regHasLength ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
-                                            <span className="font-black">{regHasLength ? '✓' : '•'}</span>
-                                            <span>8 to 64 characters in length</span>
-                                        </div>
-
-                                        <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regHasUpper && regHasLower) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
-                                            <span className="font-black">{(regHasUpper && regHasLower) ? '✓' : '•'}</span>
-                                            <span>Contains uppercase (A-Z) & lowercase (a-z) letters</span>
-                                        </div>
-
-                                        <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regHasNumber && regHasSpecial) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
-                                            <span className="font-black">{(regHasNumber && regHasSpecial) ? '✓' : '•'}</span>
-                                            <span>Contains numbers (0-9) & special characters (!@#$...)</span>
-                                        </div>
-
-                                        <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(regNoSpaces && regNotWeak && regNoPersonal) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
-                                            <span className="font-black">{(regNoSpaces && regNotWeak && regNoPersonal) ? '✓' : '•'}</span>
-                                            <span>No personal info (name/email), spaces, or common passwords</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label htmlFor="reg_confirm" className="block text-xs font-bold text-[#2563EB]">
-                                        Confirm Password <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <div className="relative mt-1">
-                                        <input
-                                            id="reg_confirm"
-                                            required
-                                            minLength={8}
-                                            maxLength={64}
-                                            type={showConfirmPassword ? 'text' : 'password'}
-                                            autoComplete="new-password"
-                                            placeholder="Re-enter your password"
-                                            className={`field text-xs py-2 pr-10 font-semibold ${!regCanUseConfirm ? 'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[#2563EB]/5' : ''}`}
-                                            value={f.password_confirmation}
-                                            onChange={handleRegistrationConfirmPasswordChange}
-                                            disabled={!regCanUseConfirm}
-                                        />
-                                        <button
-                                            type="button"
-                                            tabIndex={-1}
-                                            aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                                            disabled={!regCanUseConfirm}
-                                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] disabled:opacity-40 disabled:cursor-not-allowed bg-transparent border-0 p-1 cursor-pointer transition"
-                                        >
-                                            {showConfirmPassword ? (
-                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
-                                                </svg>
-                                            ) : (
-                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                                </svg>
+                                        {/* Rank #16: Confirm Password */}
+                                        <div>
+                                            <label htmlFor="reg_confirm_donor" className="block text-xs font-bold text-[#2563EB]">
+                                                Confirm Password <span className="text-[#22C55E]">*</span>
+                                            </label>
+                                            <div className="relative mt-1">
+                                                <input
+                                                    id="reg_confirm_donor"
+                                                    required
+                                                    disabled={!canEnterDonorSubsequent}
+                                                    minLength={8}
+                                                    maxLength={64}
+                                                    type={showConfirmPassword ? 'text' : 'password'}
+                                                    autoComplete="new-password"
+                                                    placeholder="Re-enter your password"
+                                                    className={`field text-xs py-2 pr-10 font-semibold ${!canEnterDonorSubsequent ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                                    value={f.password_confirmation}
+                                                    onChange={(e) => handleRegistrationFieldChange('password_confirmation', e.target.value)}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    tabIndex={-1}
+                                                    disabled={!canEnterDonorSubsequent}
+                                                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] bg-transparent border-0 p-1 cursor-pointer transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                >
+                                                    {showConfirmPassword ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            </div>
+                                            {f.password_confirmation && (
+                                                <div className={`mt-1 flex items-center gap-1.5 text-[11px] font-bold ${regMatchesConfirm ? 'text-[#22C55E]' : 'text-red-500'}`}>
+                                                    <span className="font-black">{regMatchesConfirm ? '✓ Passwords match' : '✕ Passwords do not match.'}</span>
+                                                </div>
                                             )}
-                                        </button>
-                                    </div>
-                                    {f.password_confirmation && (
-                                        <div className={`mt-1 flex items-center gap-1.5 text-[11px] font-bold ${regMatchesConfirm ? 'text-[#22C55E]' : 'text-red-500'}`}>
-                                            <span className="font-black">{regMatchesConfirm ? '✓ Passwords match' : '✕ Passwords do not match.'}</span>
                                         </div>
-                                    )}
-                                </div>
+                                    </>
+                                )}
 
                                 {error && <Error>{error}</Error>}
 
                                 <Button
                                     type="submit"
                                     loading={loading}
-                                    disabled={!regIsFormValid || loading}
-                                    className="w-full py-3 text-xs font-extrabold mt-2 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                                    disabled={loading || !regIsFormValid || uniqueness.student_id_number.status === 'taken' || uniqueness.email.status === 'taken' || uniqueness.contact_number.status === 'taken' || (isDonor && uniqueness.valid_id_number.status === 'taken')}
+                                    className="w-full py-3 text-xs font-extrabold mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     Create Account
                                 </Button>
@@ -1848,20 +2769,30 @@ function Auth({ register = false }) {
                                         setError('');
                                         setSuccessMessage('');
                                         setF({
+                                            account_type: '',
+                                            role: '',
+                                            first_name: '',
+                                            middle_name: '',
+                                            last_name: '',
                                             name: '',
                                             email: '',
                                             password: '',
                                             password_confirmation: '',
-                                            role: '',
-                                            country: '',
-                                            campus_id: '',
-                                            address: '',
+                                            contact_number: '',
                                             student_id_number: '',
                                             school_email: '',
                                             department: '',
                                             course: '',
                                             year_level: '',
-                                            contact_number: '',
+                                            country: 'Philippines',
+                                            country_code: 'PH',
+                                            address_line_1: '',
+                                            state_province_region: '',
+                                            city_municipality: '',
+                                            district_local_area: '',
+                                            postal_zip_code: '',
+                                            valid_id_type: '',
+                                            valid_id_number: '',
                                         });
                                     }}
                                 >
@@ -3846,40 +4777,129 @@ function ResourceForm({ donation }) {
 }
 
 function EditModal({item, kind, admin, close, done}){
+    const isUserKind = kind === 'users';
     const [f, setF] = useState({
         ...item,
+        first_name: item.first_name || (item.name ? item.name.split(' ')[0] : ''),
+        middle_name: item.middle_name || '',
+        last_name: item.last_name || (item.name && item.name.split(' ').length > 1 ? item.name.split(' ').slice(1).join(' ') : ''),
         name: item.name || '',
-        email: item.email || '',
-        role: item.role || 'donor',
+        email: item.email || item.school_email || '',
+        role: item.role || item.account_type || '',
+        account_type: item.account_type || item.role || '',
         contact_number: item.contact_number || '',
-        address: item.address || '',
-        valid_id_number: item.valid_id_number || '',
+        campus_id: item.campus_id || '',
         student_id_number: item.student_id_number || '',
         school_email: item.school_email || '',
         department: item.department || '',
         course: item.course || '',
         year_level: item.year_level || '',
-        country: item.country || '',
-        country_code: item.country_code || '',
+        country: item.country || (item.role === 'donor' ? 'Philippines' : ''),
+        country_code: item.country_code || (item.role === 'donor' ? 'PH' : ''),
+        address_line_1: item.address_line_1 || item.address || '',
+        state_province_region: item.state_province_region || '',
+        city_municipality: item.city_municipality || '',
+        district_local_area: item.district_local_area || '',
+        postal_zip_code: item.postal_zip_code || '',
+        valid_id_type: item.valid_id_type || '',
+        valid_id_number: item.valid_id_number || '',
         password: '',
         password_confirmation: '',
     });
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
 
-    const isUserKind = kind === 'users';
+    const handleRoleChange = (newRole) => {
+        setError('');
+        setF(prev => {
+            const base = {
+                ...prev,
+                role: newRole,
+                account_type: newRole,
+            };
+            if (newRole === 'admin' || newRole === 'staff') {
+                return {
+                    ...base,
+                    student_id_number: '',
+                    school_email: '',
+                    course: '',
+                    year_level: '',
+                    address_line_1: '',
+                    state_province_region: '',
+                    city_municipality: '',
+                    district_local_area: '',
+                    postal_zip_code: '',
+                    valid_id_type: '',
+                    valid_id_number: '',
+                    country: '',
+                    country_code: '',
+                };
+            } else if (newRole === 'beneficiary') {
+                return {
+                    ...base,
+                    campus_id: '',
+                    address_line_1: '',
+                    state_province_region: '',
+                    city_municipality: '',
+                    district_local_area: '',
+                    postal_zip_code: '',
+                    valid_id_type: '',
+                    valid_id_number: '',
+                    country: '',
+                    country_code: '',
+                };
+            } else if (newRole === 'donor') {
+                return {
+                    ...base,
+                    campus_id: '',
+                    student_id_number: '',
+                    school_email: '',
+                    department: '',
+                    course: '',
+                    year_level: '',
+                    country: prev.country || 'Philippines',
+                    country_code: prev.country_code || 'PH',
+                };
+            } else {
+                return {
+                    ...base,
+                    campus_id: '',
+                    student_id_number: '',
+                    school_email: '',
+                    department: '',
+                    course: '',
+                    year_level: '',
+                    address_line_1: '',
+                    state_province_region: '',
+                    city_municipality: '',
+                    district_local_area: '',
+                    postal_zip_code: '',
+                    valid_id_type: '',
+                    valid_id_number: '',
+                    country: '',
+                    country_code: '',
+                };
+            }
+        });
+    };
 
     const save = async e => {
         e.preventDefault();
         setError('');
 
         if (isUserKind) {
-            if (!f.name?.trim()) {
-                setError('Full Name is required.');
+            if (!f.role) {
+                setError('Please select an account type.');
                 return;
             }
-            if (!f.email?.trim()) {
-                setError('Email Address is required.');
+            if (!f.first_name?.trim()) {
+                setError('First Name is required.');
+                return;
+            }
+            if (!f.last_name?.trim()) {
+                setError('Last Name is required.');
                 return;
             }
             if (!item.id && !f.password) {
@@ -3892,70 +4912,121 @@ function EditModal({item, kind, admin, close, done}){
                     return;
                 }
                 if (f.password !== f.password_confirmation) {
-                    setError('Password and confirmation do not match.');
+                    setError('Passwords do not match. Please check and try again.');
                     return;
                 }
             }
-            if (f.role === 'beneficiary') {
-                if (!f.student_id_number?.trim()) {
-                    setError('Student ID Number is required for Beneficiary.');
+
+            if (f.role === 'admin' || f.role === 'staff') {
+                if (!f.campus_id?.trim()) {
+                    setError((f.role === 'admin' ? 'Administrator ID / Campus ID Number' : 'Staff ID / Campus ID Number') + ' is required.');
                     return;
                 }
-                if (!f.school_email?.trim()) {
-                    setError('School Email Address is required for Beneficiary.');
+                if (!f.email?.trim()) {
+                    setError('TMC Email Address is required.');
                     return;
                 }
                 if (!f.department?.trim()) {
-                    setError('Department is required for Beneficiary.');
+                    setError('Department / Office is required.');
                     return;
                 }
-                if (!f.course?.trim()) {
-                    setError('Course / Program is required for Beneficiary.');
+                if (!f.contact_number?.trim()) {
+                    setError('Contact Number is required.');
                     return;
                 }
-                if (!f.year_level?.trim()) {
-                    setError('Year Level is required for Beneficiary.');
+            } else if (f.role === 'beneficiary') {
+                if (!f.student_id_number?.trim() || !STUDENT_ID_REGEX.test(f.student_id_number.trim())) {
+                    setError('Please enter a valid Student ID Number in the format YY-###### (e.g., 21-010956).');
                     return;
                 }
-            }
-            if (f.role === 'donor') {
+                if (!f.email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
+                    setError('Please enter a valid email address.');
+                    return;
+                }
+                if (!f.department?.trim() || !BENEFICIARY_DEPARTMENTS.includes(f.department.trim())) {
+                    setError('Please select a valid department.');
+                    return;
+                }
+                const allowedCourses = BENEFICIARY_DEPARTMENT_COURSES[f.department.trim()] || [];
+                if (!f.course?.trim() || !allowedCourses.includes(f.course.trim())) {
+                    setError('The selected course does not belong to the selected department. Please choose a valid course.');
+                    return;
+                }
+                if (!f.year_level?.trim() || !BENEFICIARY_YEAR_LEVELS.includes(f.year_level.trim())) {
+                    setError('Please select a valid year level.');
+                    return;
+                }
+                if (!f.contact_number?.trim() || !/^09[0-9]{9}$/.test(f.contact_number.trim())) {
+                    setError('Contact Number must begin with 09 and contain exactly 11 digits.');
+                    return;
+                }
+            } else if (f.role === 'donor') {
+                if (!f.email?.trim()) {
+                    setError('Email Address is required.');
+                    return;
+                }
+                if (!f.contact_number?.trim()) {
+                    setError('Contact Number is required.');
+                    return;
+                }
+                if (!f.country?.trim()) {
+                    setError('Country / Region is required.');
+                    return;
+                }
+                if (!f.address_line_1?.trim()) {
+                    setError('Address Line 1 is required.');
+                    return;
+                }
+                if (!f.valid_id_type?.trim()) {
+                    setError('Valid ID Type is required.');
+                    return;
+                }
                 if (!f.valid_id_number?.trim()) {
-                    setError('Valid ID Number is required for Donor.');
-                    return;
-                }
-            }
-            if (f.role === 'staff' || f.role === 'admin') {
-                if (!f.campus_id?.trim()) {
-                    setError('Campus ID Number is required for ' + (f.role === 'admin' ? 'Administrator' : 'Staff') + '.');
+                    setError('Valid ID Number is required.');
                     return;
                 }
             }
         }
 
         setSaving(true);
-        const payload = { ...f };
+        let payload = { ...f };
         if (isUserKind) {
-            if (payload.role === 'beneficiary') {
-                payload.address = '';
-                payload.campus_id = '';
-            } else if (payload.role === 'donor') {
-                payload.student_id_number = '';
-                payload.school_email = '';
-                payload.department = '';
-                payload.course = '';
-                payload.year_level = '';
-                payload.campus_id = '';
-            } else {
-                payload.address = '';
-                payload.student_id_number = '';
-                payload.school_email = '';
-                payload.department = '';
-                payload.course = '';
-                payload.year_level = '';
+            const fullName = [f.first_name, f.middle_name, f.last_name].filter(Boolean).join(' ');
+            payload = {
+                role: f.role,
+                account_type: f.role,
+                first_name: f.first_name?.trim() || '',
+                middle_name: f.middle_name?.trim() || '',
+                last_name: f.last_name?.trim() || '',
+                name: fullName,
+                email: f.email?.trim() || '',
+                contact_number: f.contact_number?.trim() || '',
+            };
+
+            if (f.password) {
+                payload.password = f.password;
+                payload.password_confirmation = f.password_confirmation;
             }
-            if (!payload.password) {
-                delete payload.password;
-                delete payload.password_confirmation;
+
+            if (f.role === 'admin' || f.role === 'staff') {
+                payload.campus_id = f.campus_id?.trim() || '';
+                payload.department = f.department?.trim() || '';
+            } else if (f.role === 'beneficiary') {
+                payload.student_id_number = f.student_id_number?.trim() || '';
+                payload.school_email = f.email?.trim() || '';
+                payload.department = f.department?.trim() || '';
+                payload.course = f.course?.trim() || '';
+                payload.year_level = f.year_level?.trim() || '';
+            } else if (f.role === 'donor') {
+                payload.country = f.country?.trim() || '';
+                payload.country_code = f.country_code?.trim() || '';
+                payload.address_line_1 = f.address_line_1?.trim() || '';
+                payload.state_province_region = f.state_province_region?.trim() || '';
+                payload.city_municipality = f.city_municipality?.trim() || '';
+                payload.district_local_area = f.district_local_area?.trim() || '';
+                payload.postal_zip_code = f.postal_zip_code?.trim() || '';
+                payload.valid_id_type = f.valid_id_type?.trim() || '';
+                payload.valid_id_number = f.valid_id_number?.trim() || '';
             }
         }
 
@@ -3974,279 +5045,505 @@ function EditModal({item, kind, admin, close, done}){
 
     return (
         <div className="fixed inset-0 z-40 grid place-items-center modal-overlay p-4"><ModalBlurBackdrop />
-            <form className="panel no-hover w-full max-w-lg p-6 bg-white max-h-[90vh] overflow-y-auto space-y-4" onSubmit={save}>
+            <form className="panel no-hover w-full max-w-xl p-6 bg-white max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl rounded-2xl" onSubmit={save}>
                 <div className="flex items-center justify-between border-b border-[#2563EB]/20 pb-3">
                     <h2 className="text-lg font-extrabold text-[#2563EB]">{item.id ? (isUserKind ? 'Edit Member Account' : 'Edit entry') : (isUserKind ? 'Add New Member' : 'Add entry')}</h2>
                     <button type="button" title="Close" className="nav-link p-1" onClick={close}><Icon name="close"/></button>
                 </div>
 
                 {isUserKind ? (
-                    <div className="space-y-3 text-left">
+                    <div className="space-y-3.5 text-left">
+                        {/* Rank #1: Account Type - MUST NEVER DISAPPEAR */}
                         <div>
-                            <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                Full Name <span className="text-[#22C55E]">*</span>
+                            <label htmlFor="modal_account_type" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                Account Type <span className="text-[#22C55E]">*</span>
+                            </label>
+                            <select
+                                id="modal_account_type"
+                                required
+                                className="field w-full text-xs font-semibold"
+                                value={f.role || ''}
+                                onChange={(e) => handleRoleChange(e.target.value)}
+                            >
+                                <option value="" disabled hidden>Select account type</option>
+                                <option value="admin">Administrator</option>
+                                <option value="staff">Staff</option>
+                                <option value="beneficiary">Beneficiary (Student)</option>
+                                <option value="donor">Donor</option>
+                            </select>
+                        </div>
+
+                        {/* Rank #2: First Name */}
+                        <div>
+                            <label htmlFor="modal_first_name" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                First Name <span className="text-[#22C55E]">*</span>
                             </label>
                             <input
+                                id="modal_first_name"
                                 required
                                 type="text"
                                 className="field w-full text-xs font-semibold"
-                                placeholder="Enter full name"
-                                value={f.name || ''}
-                                onChange={e => setF({...f, name: e.target.value})}
+                                placeholder="Enter first name"
+                                value={f.first_name || ''}
+                                onChange={e => setF({...f, first_name: e.target.value})}
+                                maxLength={100}
                             />
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                                <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                    Email Address <span className="text-[#22C55E]">*</span>
-                                </label>
-                                <input
-                                    required
-                                    type="email"
-                                    className="field w-full text-xs font-semibold"
-                                    placeholder="Enter email address"
-                                    value={f.email || ''}
-                                    onChange={e => setF({...f, email: e.target.value})}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                    Contact Number
-                                </label>
-                                <input
-                                    type="text"
-                                    className="field w-full text-xs font-semibold"
-                                    placeholder="+63 912 345 6789"
-                                    value={f.contact_number || ''}
-                                    onChange={e => setF({...f, contact_number: e.target.value})}
-                                />
-                            </div>
+                        {/* Rank #3: Middle Name (Optional) */}
+                        <div>
+                            <label htmlFor="modal_middle_name" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                Middle Name <span className="text-xs font-normal text-[#2563EB]/70">(Optional)</span>
+                            </label>
+                            <input
+                                id="modal_middle_name"
+                                type="text"
+                                className="field w-full text-xs font-semibold"
+                                placeholder="Enter middle name (optional)"
+                                value={f.middle_name || ''}
+                                onChange={e => setF({...f, middle_name: e.target.value})}
+                                maxLength={100}
+                            />
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                                <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                    Account Role <span className="text-[#22C55E]">*</span>
-                                </label>
-                                <select
-                                    required
-                                    className="field w-full text-xs font-semibold"
-                                    value={f.role || 'donor'}
-                                    onChange={e => setF({...f, role: e.target.value})}
-                                >
-                                    <option value="donor">Donor</option>
-                                    <option value="beneficiary">Beneficiary</option>
-                                    <option value="staff">Staff</option>
-                                    <option value="admin">Administrator</option>
-                                </select>
-                            </div>
+                        {/* Rank #4: Last Name */}
+                        <div>
+                            <label htmlFor="modal_last_name" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                Last Name <span className="text-[#22C55E]">*</span>
+                            </label>
+                            <input
+                                id="modal_last_name"
+                                required
+                                type="text"
+                                className="field w-full text-xs font-semibold"
+                                placeholder="Enter last name"
+                                value={f.last_name || ''}
+                                onChange={e => setF({...f, last_name: e.target.value})}
+                                maxLength={100}
+                            />
                         </div>
 
-                        {/* Beneficiary-specific fields */}
-                        {f.role === 'beneficiary' && (
+                        {/* =========================================================================
+                            ROLE SPECIFIC FIELDS ACCORDING TO RANKINGS
+                        ========================================================================= */}
+
+                        {/* ADMINISTRATOR & STAFF: Rank #5 Campus ID, Rank #6 TMC Email, Rank #7 Dept, Rank #8 Contact */}
+                        {(f.role === 'admin' || f.role === 'staff') && (
                             <>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div>
-                                        <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                            Student ID Number <span className="text-[#22C55E]">*</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="field w-full text-xs font-semibold"
-                                            placeholder="Enter student ID number"
-                                            value={f.student_id_number || ''}
-                                            onChange={e => setF({...f, student_id_number: e.target.value})}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                            School Email Address <span className="text-[#22C55E]">*</span>
-                                        </label>
-                                        <input
-                                            type="email"
-                                            required
-                                            className="field w-full text-xs font-semibold"
-                                            placeholder="Enter school email"
-                                            value={f.school_email || ''}
-                                            onChange={e => setF({...f, school_email: e.target.value})}
-                                        />
-                                    </div>
+                                <div>
+                                    <label htmlFor="modal_campus_id" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        {f.role === 'admin' ? 'Administrator ID / Campus ID Number' : 'Staff ID / Campus ID Number'} <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <input
+                                        id="modal_campus_id"
+                                        type="text"
+                                        required
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder={f.role === 'admin' ? 'e.g. ADM-2026-001' : 'e.g. STF-2026-001'}
+                                        value={f.campus_id || ''}
+                                        onChange={e => setF({...f, campus_id: e.target.value})}
+                                        maxLength={50}
+                                    />
                                 </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div>
-                                        <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                            Department <span className="text-[#22C55E]">*</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="field w-full text-xs font-semibold"
-                                            placeholder="Enter department"
-                                            value={f.department || ''}
-                                            onChange={e => setF({...f, department: e.target.value})}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                            Course / Program <span className="text-[#22C55E]">*</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="field w-full text-xs font-semibold"
-                                            placeholder="Enter course / program"
-                                            value={f.course || ''}
-                                            onChange={e => setF({...f, course: e.target.value})}
-                                        />
-                                    </div>
+                                <div>
+                                    <label htmlFor="modal_admin_email" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        TMC Email Address <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <input
+                                        id="modal_admin_email"
+                                        required
+                                        type="email"
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="e.g. user@tmc.edu.ph"
+                                        value={f.email || ''}
+                                        onChange={e => setF({...f, email: e.target.value})}
+                                    />
                                 </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div>
-                                        <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                            Year Level <span className="text-[#22C55E]">*</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="field w-full text-xs font-semibold"
-                                            placeholder="e.g. 1st Year"
-                                            value={f.year_level || ''}
-                                            onChange={e => setF({...f, year_level: e.target.value})}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                            Country / Region
-                                        </label>
-                                        <input
-                                            type="text"
-                                            className="field w-full text-xs font-semibold"
-                                            placeholder="e.g. Philippines"
-                                            value={f.country || ''}
-                                            onChange={e => setF({...f, country: e.target.value})}
-                                        />
-                                    </div>
+                                <div>
+                                    <label htmlFor="modal_admin_dept" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Department / Office <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <input
+                                        id="modal_admin_dept"
+                                        type="text"
+                                        required
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="e.g. Office of Student Affairs / Administration"
+                                        value={f.department || ''}
+                                        onChange={e => setF({...f, department: e.target.value})}
+                                        maxLength={255}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_admin_contact" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Contact Number <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <InternationalPhoneInput
+                                        id="modal_admin_contact"
+                                        value={f.contact_number || ''}
+                                        onChange={(num) => setF({...f, contact_number: num})}
+                                        defaultCountry="PH"
+                                        placeholder="Enter contact number"
+                                    />
                                 </div>
                             </>
                         )}
 
-                        {/* Donor-specific fields */}
-                        {f.role === 'donor' && (
-                            <div className="grid gap-3 sm:grid-cols-2">
+                        {/* BENEFICIARY: Rank #5 Student ID, Rank #6 Email Address, Rank #7 Dept, Rank #8 Course, Rank #9 Year Level, Rank #10 Contact */}
+                        {f.role === 'beneficiary' && (
+                            <>
                                 <div>
-                                    <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">Address</label>
-                                    <input
-                                        type="text"
-                                        className="field w-full text-xs font-semibold"
-                                        placeholder="Enter address"
-                                        value={f.address || ''}
-                                        onChange={e => setF({...f, address: e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Country / Region
+                                    <label htmlFor="modal_student_id" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Student ID Number <span className="text-[#22C55E]">*</span>
                                     </label>
                                     <input
+                                        id="modal_student_id"
                                         type="text"
+                                        required
                                         className="field w-full text-xs font-semibold"
-                                        placeholder="e.g. Philippines"
-                                        value={f.country || ''}
-                                        onChange={e => setF({...f, country: e.target.value})}
+                                        placeholder="e.g. 21-010956"
+                                        value={f.student_id_number || ''}
+                                        onChange={e => setF({...f, student_id_number: e.target.value})}
+                                        maxLength={9}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                    <label htmlFor="modal_ben_email" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Email Address <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <input
+                                        id="modal_ben_email"
+                                        required
+                                        type="email"
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="e.g. student@tmc.edu.ph"
+                                        value={f.email || ''}
+                                        onChange={e => setF({...f, email: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_ben_dept" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Department <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <select
+                                        id="modal_ben_dept"
+                                        required
+                                        className="field w-full text-xs font-semibold"
+                                        value={f.department || ''}
+                                        onChange={e => setF({...f, department: e.target.value, course: '', year_level: ''})}
+                                    >
+                                        <option value="" disabled hidden>Select Department</option>
+                                        {BENEFICIARY_DEPARTMENTS.map((dept) => (
+                                            <option key={dept} value={dept}>{dept}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_ben_course" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Course <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <select
+                                        id="modal_ben_course"
+                                        required
+                                        disabled={!f.department}
+                                        className={`field w-full text-xs font-semibold ${!f.department ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                        value={f.course || ''}
+                                        onChange={e => setF({...f, course: e.target.value, year_level: ''})}
+                                    >
+                                        <option value="" disabled hidden>{f.department ? 'Select Course' : 'Select Department First'}</option>
+                                        {(BENEFICIARY_DEPARTMENT_COURSES[f.department] || []).map((crs) => (
+                                            <option key={crs} value={crs}>{crs}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_ben_year" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Year Level <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <select
+                                        id="modal_ben_year"
+                                        required
+                                        disabled={!f.course || !f.department}
+                                        className={`field w-full text-xs font-semibold ${(!f.course || !f.department) ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                        value={f.year_level || ''}
+                                        onChange={e => setF({...f, year_level: e.target.value})}
+                                    >
+                                        <option value="" disabled hidden>Select Year Level</option>
+                                        {BENEFICIARY_YEAR_LEVELS.map((yr) => (
+                                            <option key={yr} value={yr}>{yr}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_ben_contact" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Contact Number <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <input
+                                        id="modal_ben_contact"
+                                        type="tel"
+                                        inputMode="numeric"
+                                        required
+                                        placeholder="09XXXXXXXXX"
+                                        minLength={11}
+                                        maxLength={11}
+                                        className="field w-full text-xs font-semibold"
+                                        value={f.contact_number || ''}
+                                        onChange={(e) => {
+                                            const cleanDigits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                                            setF({...f, contact_number: cleanDigits});
+                                        }}
+                                    />
+                                    <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/70">
+                                        Enter an 11-digit Philippine mobile number.
+                                    </p>
+                                </div>
+                            </>
+                        )}
+
+                        {/* DONOR: Rank #5 Email, Rank #6 Country, Rank #7 Contact, Rank #8 Addr1, Rank #9 State, Rank #10 City, Rank #11 District, Rank #12 Postal, Rank #13 ID Type, Rank #14 ID Num */}
+                        {f.role === 'donor' && (
+                            <>
+                                <div>
+                                    <label htmlFor="modal_donor_email" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Email Address <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <input
+                                        id="modal_donor_email"
+                                        required
+                                        type="email"
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="e.g. donor@example.com"
+                                        value={f.email || ''}
+                                        onChange={e => setF({...f, email: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_country" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Country / Region <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <CountrySelect
+                                        id="modal_donor_country"
+                                        value={f.country || ''}
+                                        onChange={(countryName, countryCode) => setF({
+                                            ...f,
+                                            country: countryName,
+                                            country_code: countryCode || f.country_code
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_contact" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Contact Number <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <InternationalPhoneInput
+                                        id="modal_donor_contact"
+                                        value={f.contact_number || ''}
+                                        onChange={(num, valid, meta = {}) => setF({
+                                            ...f,
+                                            contact_number: num,
+                                            country_code: meta.country || f.country_code
+                                        })}
+                                        defaultCountry={f.country_code || findCountry(f.country)?.code || 'PH'}
+                                        placeholder="Enter contact number"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_addr1" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Address Line 1 <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <input
+                                        id="modal_donor_addr1"
+                                        type="text"
+                                        required
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="House/Unit/Building No., Street Name"
+                                        value={f.address_line_1 || ''}
+                                        onChange={e => setF({...f, address_line_1: e.target.value})}
+                                        maxLength={255}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_state" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        State / Province / Region <span className="text-xs font-normal text-[#2563EB]/70">(Optional)</span>
+                                    </label>
+                                    <input
+                                        id="modal_donor_state"
+                                        type="text"
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="Enter your state, province, or region"
+                                        value={f.state_province_region || ''}
+                                        onChange={e => setF({...f, state_province_region: e.target.value})}
+                                        maxLength={255}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_city" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        City / Town / Municipality <span className="text-xs font-normal text-[#2563EB]/70">(Optional)</span>
+                                    </label>
+                                    <input
+                                        id="modal_donor_city"
+                                        type="text"
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="Enter your city, town, or municipality"
+                                        value={f.city_municipality || ''}
+                                        onChange={e => setF({...f, city_municipality: e.target.value})}
+                                        maxLength={255}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_district" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        District / Local Area <span className="text-xs font-normal text-[#2563EB]/70">(Optional)</span>
+                                    </label>
+                                    <input
+                                        id="modal_donor_district"
+                                        type="text"
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="Enter your district or local area (optional)"
+                                        value={f.district_local_area || ''}
+                                        onChange={e => setF({...f, district_local_area: e.target.value})}
+                                        maxLength={255}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_zip" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Postal / ZIP Code <span className="text-xs font-normal text-[#2563EB]/70">(Optional)</span>
+                                    </label>
+                                    <input
+                                        id="modal_donor_zip"
+                                        type="text"
+                                        className="field w-full text-xs font-semibold"
+                                        placeholder="Enter your postal or ZIP code"
+                                        value={f.postal_zip_code || ''}
+                                        onChange={e => setF({...f, postal_zip_code: e.target.value})}
+                                        maxLength={50}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_id_type" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                        Valid ID Type <span className="text-[#22C55E]">*</span>
+                                    </label>
+                                    <select
+                                        id="modal_donor_id_type"
+                                        required
+                                        className="field w-full text-xs font-semibold"
+                                        value={f.valid_id_type || ''}
+                                        onChange={e => setF({...f, valid_id_type: e.target.value})}
+                                    >
+                                        <option value="" disabled hidden>Select Valid ID Type</option>
+                                        {VALID_ID_TYPES.map((type) => (
+                                            <option key={type} value={type}>{type}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="modal_donor_id_num" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
                                         Valid ID Number <span className="text-[#22C55E]">*</span>
                                     </label>
                                     <input
+                                        id="modal_donor_id_num"
                                         type="text"
                                         required
                                         className="field w-full text-xs font-semibold"
-                                        placeholder="Enter valid ID number"
+                                        placeholder="Enter your valid ID number"
                                         value={f.valid_id_number || ''}
                                         onChange={e => setF({...f, valid_id_number: e.target.value})}
+                                        maxLength={50}
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Country Code
-                                    </label>
-                                    <input
-                                        type="text"
-                                        className="field w-full text-xs font-semibold"
-                                        placeholder="e.g. PH"
-                                        value={f.country_code || ''}
-                                        onChange={e => setF({...f, country_code: e.target.value})}
-                                    />
-                                </div>
-                            </div>
+                            </>
                         )}
 
-                        {/* Staff / Admin specific fields */}
-                        {(f.role === 'staff' || f.role === 'admin') && (
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <div>
-                                    <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Campus ID Number <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        required
-                                        className="field w-full text-xs font-semibold"
-                                        placeholder="e.g. 2024-019852"
-                                        value={f.campus_id || ''}
-                                        onChange={e => setF({...f, campus_id: e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Country / Region
-                                    </label>
-                                    <input
-                                        type="text"
-                                        className="field w-full text-xs font-semibold"
-                                        placeholder="e.g. Philippines"
-                                        value={f.country || ''}
-                                        onChange={e => setF({...f, country: e.target.value})}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Password & Confirm Password */}
-                        <div className="grid gap-3 sm:grid-cols-2">
+                        {/* INITIAL FORM: Rank #5 Contact Number (when unselected) */}
+                        {!f.role && (
                             <div>
-                                <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                    {item.id ? 'New Password' : 'Password'} {!item.id && <span className="text-[#22C55E]">*</span>}
+                                <label htmlFor="modal_init_contact" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                    Contact Number <span className="text-[#22C55E]">*</span>
                                 </label>
+                                <InternationalPhoneInput
+                                    id="modal_init_contact"
+                                    value={f.contact_number || ''}
+                                    onChange={(num) => setF({...f, contact_number: num})}
+                                    defaultCountry="PH"
+                                    placeholder="Enter contact number"
+                                />
+                            </div>
+                        )}
+
+                        {/* PASSWORDS: Rendered at final ranks */}
+                        <div>
+                            <label htmlFor="modal_pwd" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                {item.id ? 'New Password' : 'Password'} {!item.id && <span className="text-[#22C55E]">*</span>}
+                            </label>
+                            <div className="relative">
                                 <input
+                                    id="modal_pwd"
                                     required={!item.id}
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     minLength={8}
-                                    className="field w-full text-xs font-semibold"
-                                    placeholder={item.id ? 'Leave empty to keep' : 'Min. 8 characters'}
+                                    maxLength={64}
+                                    className="field w-full text-xs font-semibold pr-10"
+                                    placeholder={item.id ? 'Leave empty to keep existing password' : 'Min. 8 characters'}
                                     value={f.password || ''}
                                     onChange={e => setF({...f, password: e.target.value})}
                                 />
+                                <button
+                                    type="button"
+                                    tabIndex={-1}
+                                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] bg-transparent border-0 p-1 cursor-pointer transition"
+                                >
+                                    {showPassword ? (
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                    )}
+                                </button>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                    {item.id ? 'Confirm New Password' : 'Confirm Password'} {!item.id && <span className="text-[#22C55E]">*</span>}
-                                </label>
+                        </div>
+
+                        <div>
+                            <label htmlFor="modal_confirm_pwd" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                {item.id ? 'Confirm New Password' : 'Confirm Password'} {!item.id && <span className="text-[#22C55E]">*</span>}
+                            </label>
+                            <div className="relative">
                                 <input
+                                    id="modal_confirm_pwd"
                                     required={!item.id || !!f.password}
-                                    type="password"
+                                    type={showConfirmPassword ? 'text' : 'password'}
                                     minLength={8}
-                                    className="field w-full text-xs font-semibold"
+                                    maxLength={64}
+                                    className="field w-full text-xs font-semibold pr-10"
                                     placeholder="Re-enter password"
                                     value={f.password_confirmation || ''}
                                     onChange={e => setF({...f, password_confirmation: e.target.value})}
                                 />
+                                <button
+                                    type="button"
+                                    tabIndex={-1}
+                                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2563EB] hover:text-[#22C55E] bg-transparent border-0 p-1 cursor-pointer transition"
+                                >
+                                    {showConfirmPassword ? (
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                    )}
+                                </button>
                             </div>
                         </div>
+
                         {f.password && f.password_confirmation && (
                             <p className={`text-[11px] font-bold ${f.password === f.password_confirmation ? 'text-[#22C55E]' : 'text-red-500'}`}>
                                 {f.password === f.password_confirmation ? '✓ Passwords match' : '✕ Passwords do not match'}
@@ -4371,8 +5668,8 @@ function PeopleManager(){
                         Manage user roles, inspect account profiles, and authorize campus accounts.
                     </p>
                 </div>
-                <Button onClick={() => setEditing({name: '', email: '', role: 'donor', contact_number: '', address: '', valid_id_number: '', student_id_number: '', school_email: '', department: '', course: '', year_level: '', country: '', country_code: '', password: '', password_confirmation: ''})}>
-                    <Icon name="plus"/><span className="ml-2">Add Member</span>
+                <Button onClick={() => setEditing({ id: null, role: '', account_type: '', first_name: '', middle_name: '', last_name: '', name: '', email: '', contact_number: '', campus_id: '', student_id_number: '', school_email: '', department: '', course: '', year_level: '', country: '', country_code: '', address_line_1: '', state_province_region: '', city_municipality: '', district_local_area: '', postal_zip_code: '', valid_id_type: '', valid_id_number: '', password: '', password_confirmation: '' })}>
+                    <Icon name="plus"/><span className="ml-2">Add New Member</span>
                 </Button>
             </div>
 
@@ -4516,9 +5813,14 @@ function PeopleManager(){
                                                         <strong className="block text-xs font-bold text-[#2563EB] truncate max-w-[150px]" title={userItem.name}>
                                                             {userItem.name}
                                                         </strong>
-                                                        {userItem.role === 'donor' && userItem.campus_id && (
+                                                        {(userItem.role === 'admin' || userItem.role === 'staff') && userItem.campus_id && (
                                                             <span className="text-[10px] font-semibold text-[#2563EB]/70 block truncate max-w-[150px]">
                                                                 ID: {userItem.campus_id}
+                                                            </span>
+                                                        )}
+                                                        {userItem.role === 'donor' && userItem.valid_id_number && (
+                                                            <span className="text-[10px] font-semibold text-[#2563EB]/70 block truncate max-w-[150px]">
+                                                                ID: {userItem.valid_id_number}
                                                             </span>
                                                         )}
                                                         {userItem.role === 'beneficiary' && userItem.student_id_number && (
@@ -4546,7 +5848,7 @@ function PeopleManager(){
                                                         ? (userItem.valid_id_number || '—')
                                                         : userItem.role === 'beneficiary'
                                                             ? (userItem.student_id_number || '—')
-                                                            : '—'}
+                                                            : (userItem.campus_id || '—')}
                                                 </span>
                                             </td>
                                             <td>
@@ -4732,6 +6034,10 @@ function PeopleManager(){
                                     <span className="font-semibold text-[#2563EB]">{viewingUser.address || 'Not provided'}</span>
                                 </div>
                                 <div className="flex justify-between py-1 border-b border-[#2563EB]/10">
+                                    <span className="font-bold text-[#2563EB]/70">Valid ID Type:</span>
+                                    <span className="font-semibold text-[#2563EB]">{viewingUser.valid_id_type || 'Not provided'}</span>
+                                </div>
+                                <div className="flex justify-between py-1 border-b border-[#2563EB]/10">
                                     <span className="font-bold text-[#2563EB]/70">Valid ID Number:</span>
                                     <span className="font-mono font-bold text-[#2563EB]">{viewingUser.valid_id_number || 'N/A'}</span>
                                 </div>
@@ -4758,12 +6064,16 @@ function PeopleManager(){
                                     <span className="font-semibold text-[#2563EB]">{viewingUser.year_level || 'Not provided'}</span>
                                 </div>
                             </>)}
-                            {(viewingUser.role === 'admin' || viewingUser.role === 'staff') && (
+                            {(viewingUser.role === 'admin' || viewingUser.role === 'staff') && (<>
                                 <div className="flex justify-between py-1 border-b border-[#2563EB]/10">
-                                    <span className="font-bold text-[#2563EB]/70">Campus ID Number:</span>
+                                    <span className="font-bold text-[#2563EB]/70">{viewingUser.role === 'admin' ? 'Administrator ID:' : 'Staff ID:'}</span>
                                     <span className="font-mono font-bold text-[#2563EB]">{viewingUser.campus_id || 'N/A'}</span>
                                 </div>
-                            )}
+                                <div className="flex justify-between py-1 border-b border-[#2563EB]/10">
+                                    <span className="font-bold text-[#2563EB]/70">Department / Office:</span>
+                                    <span className="font-semibold text-[#2563EB]">{viewingUser.department || 'Not provided'}</span>
+                                </div>
+                            </>)}
                             <div className="flex justify-between py-1">
                                 <span className="font-bold text-[#2563EB]/70">Registration Date:</span>
                                 <span className="font-semibold text-[#2563EB]">
@@ -14256,8 +15566,15 @@ function Profile(){
         name:user?.name||'',
         email:user?.email||'',
         contact_number:user?.contact_number||'',
-        campus_id:user?.campus_id||'',
+        campus_id:user?.campus_id||user?.valid_id_number||'',
         address:user?.address||'',
+        address_line_1:user?.address_line_1||'',
+        state_province_region:user?.state_province_region||'',
+        city_municipality:user?.city_municipality||'',
+        district_local_area:user?.district_local_area||'',
+        postal_zip_code:user?.postal_zip_code||'',
+        valid_id_type:user?.valid_id_type||'',
+        valid_id_number:user?.valid_id_number||user?.campus_id||'',
         student_id_number:user?.student_id_number||'',
         school_email:user?.school_email||'',
         department:user?.department||'',
@@ -14286,8 +15603,15 @@ function Profile(){
                 name:user.name||'',
                 email:user.email||'',
                 contact_number:user.contact_number||'',
-                campus_id:user.campus_id||'',
+                campus_id:user.campus_id||user.valid_id_number||'',
                 address:user.address||'',
+                address_line_1:user.address_line_1||'',
+                state_province_region:user.state_province_region||'',
+                city_municipality:user.city_municipality||'',
+                district_local_area:user.district_local_area||'',
+                postal_zip_code:user.postal_zip_code||'',
+                valid_id_type:user.valid_id_type||'',
+                valid_id_number:user.valid_id_number||user.campus_id||'',
                 student_id_number:user.student_id_number||'',
                 school_email:user.school_email||'',
                 department:user.department||'',
@@ -14382,6 +15706,16 @@ function Profile(){
         if(f.contact_number) data.append('contact_number',f.contact_number.trim());
         if(f.campus_id) data.append('campus_id',f.campus_id.trim());
         if(f.address) data.append('address',f.address.trim());
+        if(f.address_line_1) data.append('address_line_1',f.address_line_1.trim());
+        if(f.state_province_region) data.append('state_province_region',f.state_province_region.trim());
+        if(f.city_municipality) data.append('city_municipality',f.city_municipality.trim());
+        if(f.district_local_area) data.append('district_local_area',f.district_local_area.trim());
+        if(f.postal_zip_code) data.append('postal_zip_code',f.postal_zip_code.trim());
+        if(f.valid_id_type) data.append('valid_id_type',f.valid_id_type.trim());
+        if(f.valid_id_number){
+            data.append('valid_id_number',f.valid_id_number.trim());
+            data.append('campus_id',f.valid_id_number.trim());
+        }
         if(f.student_id_number) data.append('student_id_number',f.student_id_number.trim());
         if(f.school_email) data.append('school_email',f.school_email.trim());
         if(f.department) data.append('department',f.department.trim());
@@ -14417,7 +15751,6 @@ function Profile(){
     const initials=(user.name||'U').split(' ').filter(Boolean).map(w=>w[0]).join('').toUpperCase().slice(0,2);
     const memberSince=user.created_at?new Date(user.created_at).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}):'N/A';
     const roleBadgeLabel=user.role==='beneficiary'?'BENEFICIARY':user.role==='donor'?'DONOR':(user.role||'user').toUpperCase();
-    const idLabel = 'Valid ID Number';
 
     const sections=[
         {key:'personal',label:'Personal Info',icon:'person'},
@@ -14526,81 +15859,253 @@ function Profile(){
                                 <h3 className="text-sm font-extrabold text-[#2563EB] uppercase tracking-wider">Personal Information</h3>
                             </div>
 
-                            <div className="grid gap-5 sm:grid-cols-2">
-                                <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Full Name *</label>
-                                    <input
-                                        required
-                                        className="field w-full"
-                                        placeholder="Enter your full name"
-                                        value={f.name}
-                                        onChange={e=>setF({...f,name:e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Email Address *</label>
-                                    <input
-                                        required
-                                        type="email"
-                                        className="field w-full"
-                                        placeholder="Enter your email address"
-                                        value={f.email}
-                                        onChange={e=>setF({...f,email:e.target.value})}
-                                    />
-                                </div>
-                            </div>
+                            {user.role==='donor' ? (
+                                <>
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Full Name *</label>
+                                            <input
+                                                required
+                                                className="field w-full"
+                                                placeholder="Enter your full name"
+                                                value={f.name}
+                                                onChange={e=>setF({...f,name:e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Email Address *</label>
+                                            <input
+                                                required
+                                                type="email"
+                                                className="field w-full"
+                                                placeholder="Enter your email address"
+                                                value={f.email}
+                                                onChange={e=>setF({...f,email:e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
 
-                            <div className="grid gap-5 sm:grid-cols-2">
-                                <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Contact Number</label>
-                                    <InternationalPhoneInput
-                                        id="profile_contact_number"
-                                        value={f.contact_number}
-                                        defaultCountry={f.country_code || 'PH'}
-                                        onChange={(val, valid, meta={})=>setF(prev=>({
-                                            ...prev,
-                                            contact_number:val,
-                                            country:meta.country ? (COUNTRY_LIST.find(country=>country.code===meta.country)?.name || prev.country) : prev.country,
-                                            country_code:meta.country || prev.country_code,
-                                        }))}
-                                        placeholder="Enter contact number"
-                                    />
-                                </div>
-                            </div>
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Country / Region *</label>
+                                            <CountrySelect
+                                                id="profile_country"
+                                                value={f.country}
+                                                onChange={(name, code) => setF(prev => ({ ...prev, country: name, country_code: code }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Contact Number</label>
+                                            <InternationalPhoneInput
+                                                id="profile_contact_number"
+                                                value={f.contact_number}
+                                                defaultCountry={f.country_code || 'PH'}
+                                                onChange={(val, valid, meta={})=>setF(prev=>({
+                                                    ...prev,
+                                                    contact_number:val,
+                                                    country:meta.country ? (findCountry(meta.country)?.name || prev.country) : prev.country,
+                                                    country_code:meta.country || prev.country_code,
+                                                }))}
+                                                placeholder="Enter contact number"
+                                            />
+                                        </div>
+                                    </div>
 
-                            <div className="grid gap-5 sm:grid-cols-2">
-                                {user.role==='donor'&&<>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Address</label>
-                                    <input className="field w-full" placeholder="Enter your address" value={f.address} onChange={e=>setF({...f,address:e.target.value})}/>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">{idLabel}</label>
-                                    <input className="field w-full" placeholder="Enter your valid ID number" value={f.campus_id} onChange={e=>setF({...f,campus_id:e.target.value})}/>
-                                </div>
-                                </>}
-                                {user.role==='beneficiary'&&<>
-                                {[
-                                    ['Student ID Number','student_id_number','Enter your student ID number'],
-                                    ['School Email Address','school_email','Enter your school email address'],
-                                    ['Department','department','Enter your department'],
-                                    ['Course','course','Enter your course'],
-                                    ['Year Level','year_level','e.g. 1st Year'],
-                                ].map(([label,key,placeholder])=><div key={key}>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">{label}</label>
-                                    <input className="field w-full" type={key==='school_email'?'email':'text'} placeholder={placeholder} value={f[key]} onChange={e=>setF({...f,[key]:e.target.value})}/>
-                                </div>)}
-                                </>}
-                                <div>
-                                    <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Country / Region</label>
-                                    <input
-                                        className="field w-full"
-                                        placeholder="Enter your country or region"
-                                        value={f.country}
-                                        onChange={e=>setF({...f,country:e.target.value})}
-                                    />
-                                </div>
-                            </div>
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Address Line 1</label>
+                                            <input
+                                                className="field w-full"
+                                                placeholder="Street address, P.O. box, company name, c/o, apartment, building, floor"
+                                                value={f.address_line_1}
+                                                onChange={e=>setF({...f,address_line_1:e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">State / Province / Region</label>
+                                            <input
+                                                className="field w-full"
+                                                placeholder="e.g. Metro Manila, California, Ontario, Tokyo"
+                                                value={f.state_province_region}
+                                                onChange={e=>setF({...f,state_province_region:e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">City / Town / Municipality</label>
+                                            <input
+                                                className="field w-full"
+                                                placeholder="e.g. Manila, Los Angeles, Toronto, Shinjuku"
+                                                value={f.city_municipality}
+                                                onChange={e=>setF({...f,city_municipality:e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">District / Local Area (Optional)</label>
+                                            <input
+                                                className="field w-full"
+                                                placeholder="e.g. Barangay, Suburb, County, District"
+                                                value={f.district_local_area}
+                                                onChange={e=>setF({...f,district_local_area:e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Postal / ZIP Code</label>
+                                            <input
+                                                className="field w-full"
+                                                placeholder="e.g. 1000, 90001, M5V 2T6, 160-0022"
+                                                value={f.postal_zip_code}
+                                                onChange={e=>setF({...f,postal_zip_code:e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Valid ID Type</label>
+                                            <select
+                                                className="field w-full"
+                                                value={f.valid_id_type}
+                                                onChange={e=>setF({...f,valid_id_type:e.target.value})}
+                                            >
+                                                <option value="" disabled hidden>Select Valid ID Type</option>
+                                                {VALID_ID_TYPES.map(type => (
+                                                    <option key={type} value={type}>{type}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Valid ID Number</label>
+                                            <input
+                                                className="field w-full"
+                                                placeholder="e.g. Passport number, driver license number, national ID"
+                                                value={f.valid_id_number}
+                                                onChange={e=>setF({...f,valid_id_number:e.target.value,campus_id:e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Full Name *</label>
+                                            <input
+                                                required
+                                                className="field w-full"
+                                                placeholder="Enter your full name"
+                                                value={f.name}
+                                                onChange={e=>setF({...f,name:e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Email Address *</label>
+                                            <input
+                                                required
+                                                type="email"
+                                                className="field w-full"
+                                                placeholder="Enter your email address"
+                                                value={f.email}
+                                                onChange={e=>setF({...f,email:e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Contact Number</label>
+                                            {user.role === 'beneficiary' ? (
+                                                <div>
+                                                    <input
+                                                        id="profile_contact_number"
+                                                        type="tel"
+                                                        inputMode="numeric"
+                                                        placeholder="09XXXXXXXXX"
+                                                        minLength={11}
+                                                        maxLength={11}
+                                                        className="field w-full"
+                                                        value={f.contact_number}
+                                                        onChange={(e) => {
+                                                            const cleanDigits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                                                            setF((prev) => ({ ...prev, contact_number: cleanDigits }));
+                                                        }}
+                                                    />
+                                                    <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/70">
+                                                        Enter an 11-digit Philippine mobile number.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <InternationalPhoneInput
+                                                    id="profile_contact_number"
+                                                    value={f.contact_number}
+                                                    defaultCountry={f.country_code || 'PH'}
+                                                    onChange={(val, valid, meta={})=>setF(prev=>({
+                                                        ...prev,
+                                                        contact_number:val,
+                                                        country:meta.country ? (findCountry(meta.country)?.name || prev.country) : prev.country,
+                                                        country_code:meta.country || prev.country_code,
+                                                    }))}
+                                                    placeholder="Enter contact number"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        {user.role==='beneficiary'&&<>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Student ID Number</label>
+                                            <input className="field w-full" placeholder="Enter your student ID number" maxLength={9} value={f.student_id_number} onChange={e=>setF({...f,student_id_number:e.target.value})}/>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">School Email Address</label>
+                                            <input className="field w-full" type="email" placeholder="Enter your school email address" value={f.school_email} onChange={e=>setF({...f,school_email:e.target.value})}/>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Department</label>
+                                            <select className="field w-full" value={f.department} onChange={e=>setF({...f,department:e.target.value})}>
+                                                <option value="" disabled hidden>Select Department</option>
+                                                {BENEFICIARY_DEPARTMENTS.map(dept => (
+                                                    <option key={dept} value={dept}>{dept}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Course</label>
+                                            <select className="field w-full" value={f.course} onChange={e=>setF({...f,course:e.target.value})}>
+                                                <option value="" disabled hidden>Select Course</option>
+                                                {BENEFICIARY_COURSES.map(crs => (
+                                                    <option key={crs} value={crs}>{crs}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Year Level</label>
+                                            <select className="field w-full" value={f.year_level} onChange={e=>setF({...f,year_level:e.target.value})}>
+                                                <option value="" disabled hidden>Select Year Level</option>
+                                                {BENEFICIARY_YEAR_LEVELS.map(yr => (
+                                                    <option key={yr} value={yr}>{yr}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        </>}
+                                        {user.role!=='beneficiary'&&<div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-[#2563EB]/70 mb-1.5">Country / Region</label>
+                                            <input
+                                                className="field w-full"
+                                                placeholder="Enter your country or region"
+                                                value={f.country}
+                                                onChange={e=>setF({...f,country:e.target.value})}
+                                            />
+                                        </div>}
+                                    </div>
+                                </>
+                            )}
 
                         </div>
 
@@ -14703,7 +16208,6 @@ function Profile(){
                                         value={f.password}
                                         onChange={e=>setF({...f,password:e.target.value})}
                                     />
-
                                     {f.password&&(
                                         <div className="mt-2 space-y-1.5">
                                             <div className="flex gap-1">
@@ -14780,12 +16284,18 @@ function Profile(){
                                     {label:'Account ID',value:`#${user.id||'—'}`},
                                     {label:'Full Name',value:user.name||'—'},
                                     {label:'Email Address',value:user.email||'—'},
+                                    {label:'Country / Region',value:user.country||'Campus Resident'},
                                     {label:'Contact Number',value:user.contact_number||'Not provided'},
                                     {label:'Account Type',value:user.role==='beneficiary'?'Request Support (Beneficiary)':user.role==='donor'?'Make a Donation (Donor)':title(user.role)},
-                                    {label:'Country / Region',value:user.country||'Campus Resident'},
                                     ...(user.role==='donor'?[
-                                        {label:'Address',value:user.address||'Not provided'},
-                                        {label:'Valid ID Number',value:user.campus_id||'N/A',isMono:true},
+                                        {label:'Address Line 1',value:user.address_line_1||'Not provided'},
+                                        {label:'State / Province / Region',value:user.state_province_region||'Not provided'},
+                                        {label:'City / Town / Municipality',value:user.city_municipality||'Not provided'},
+                                        {label:'District / Local Area',value:user.district_local_area||'Not provided'},
+                                        {label:'Postal / ZIP Code',value:user.postal_zip_code||'Not provided'},
+                                        {label:'Full Address',value:user.address||'Not provided'},
+                                        {label:'Valid ID Type',value:user.valid_id_type||'Not provided'},
+                                        {label:'Valid ID Number',value:user.valid_id_number||user.campus_id||'N/A',isMono:true},
                                     ]:[]),
                                     ...(user.role==='beneficiary'?[
                                         {label:'Student ID Number',value:user.student_id_number||'N/A',isMono:true},
