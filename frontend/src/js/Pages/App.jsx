@@ -4811,8 +4811,146 @@ function EditModal({item, kind, admin, close, done}){
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
 
+    // Real-time uniqueness checking for Beneficiary fields (mirrors user-side registration)
+    const [adminUniqueness, setAdminUniqueness] = useState({
+        student_id_number: { status: 'idle', message: '', checkedValue: '' },
+        email: { status: 'idle', message: '', checkedValue: '' },
+        contact_number: { status: 'idle', message: '', checkedValue: '' },
+    });
+
+    // Password strength (mirrors user-side registration, only computed when role is beneficiary or donor)
+    const adminPwd = f.password || '';
+    const adminConfirmPwd = f.password_confirmation || '';
+    const adminHasLength = adminPwd.length >= 8 && adminPwd.length <= 64;
+    const adminHasUpper = /[A-Z]/.test(adminPwd);
+    const adminHasLower = /[a-z]/.test(adminPwd);
+    const adminHasNumber = /[0-9]/.test(adminPwd);
+    const adminHasSpecial = /[!@#$%^&*()_\-+=\[\]{}|:;,.?]/.test(adminPwd);
+    const adminNoSpaces = adminPwd.length > 0 && adminPwd.trim() === adminPwd;
+    const adminWeakList = ['password', '12345678', 'qwerty', 'admin', 'welcome', '123456', 'password123', 'relieflink', 'letmein'];
+    const adminNotWeak = !adminWeakList.includes(adminPwd.toLowerCase());
+    const adminFirstName = (f.first_name || '').toLowerCase();
+    const adminLastName = (f.last_name || '').toLowerCase();
+    const adminEmailStr = (f.email || '').toLowerCase();
+    const adminEmailPrefix = adminEmailStr.split('@')[0] || '';
+    const adminNameParts = [adminFirstName, adminLastName].join(' ').split(' ').filter(p => p.length >= 3);
+    let adminContainsPersonal = false;
+    if (adminPwd.length > 0) {
+        if (adminEmailPrefix.length >= 3 && adminPwd.toLowerCase().includes(adminEmailPrefix)) adminContainsPersonal = true;
+        for (const part of adminNameParts) {
+            if (adminPwd.toLowerCase().includes(part)) { adminContainsPersonal = true; break; }
+        }
+    }
+    const adminNoPersonal = adminPwd.length > 0 && !adminContainsPersonal;
+    const adminMatchesConfirm = adminConfirmPwd.length > 0 && adminConfirmPwd === adminPwd;
+    const adminIsPasswordValid = adminHasLength && adminHasUpper && adminHasLower && adminHasNumber && adminHasSpecial && adminNoSpaces && adminNotWeak && adminNoPersonal;
+
+    let adminPwdScore = 0;
+    if (adminPwd.length >= 8) adminPwdScore += 1;
+    if (adminHasUpper && adminHasLower) adminPwdScore += 1;
+    if (adminHasNumber && adminHasSpecial) adminPwdScore += 1;
+    if (adminIsPasswordValid) adminPwdScore += 1;
+    const adminStrengthLabel = adminPwdScore === 1 ? 'Weak' : adminPwdScore === 2 ? 'Fair' : adminPwdScore === 3 ? 'Strong' : adminPwdScore === 4 ? 'Very Strong' : 'Weak';
+
+    const STUDENT_ID_REGEX_MODAL = /^\d{2}-\d{6}$/;
+    const EMAIL_REGEX_MODAL = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    // Debounced real-time uniqueness checks for Beneficiary (Add New Member)
+    useEffect(() => {
+        // Only run checks when creating a new Beneficiary (not editing)
+        if (item.id || f.role !== 'beneficiary') {
+            setAdminUniqueness({
+                student_id_number: { status: 'idle', message: '', checkedValue: '' },
+                email: { status: 'idle', message: '', checkedValue: '' },
+                contact_number: { status: 'idle', message: '', checkedValue: '' },
+            });
+            return;
+        }
+
+        const studentIdVal = STUDENT_ID_REGEX_MODAL.test((f.student_id_number || '').trim()) ? (f.student_id_number || '').trim() : '';
+        const emailVal = EMAIL_REGEX_MODAL.test((f.email || '').trim()) && !(f.email || '').trim().includes('..') ? (f.email || '').trim() : '';
+        const contactVal = /^09[0-9]{9}$/.test((f.contact_number || '').trim()) ? (f.contact_number || '').trim() : '';
+
+        const candidates = {
+            student_id_number: studentIdVal,
+            email: emailVal,
+            contact_number: contactVal,
+        };
+
+        let cancelled = false;
+
+        setAdminUniqueness(prev => {
+            const next = { ...prev };
+            Object.keys(candidates).forEach(field => {
+                const value = candidates[field];
+                const old = prev[field];
+                if (!value) {
+                    next[field] = { status: 'idle', message: '', checkedValue: '' };
+                } else if (old.checkedValue !== value) {
+                    next[field] = { status: 'checking', message: '', checkedValue: value };
+                }
+            });
+            return next;
+        });
+
+        const timer = setTimeout(async () => {
+            await Promise.all(
+                Object.keys(candidates)
+                    .filter(field => candidates[field])
+                    .map(async field => {
+                        const value = candidates[field];
+                        try {
+                            const { data } = await api.post('/register/check-availability', {
+                                field,
+                                value,
+                                account_type: 'beneficiary',
+                                country: 'Philippines',
+                                country_code: 'PH',
+                            });
+                            if (!cancelled) {
+                                setAdminUniqueness(prev => ({
+                                    ...prev,
+                                    [field]: {
+                                        status: data.available ? 'available' : 'taken',
+                                        message: data.message || '',
+                                        checkedValue: value,
+                                    },
+                                }));
+                            }
+                        } catch (reqErr) {
+                            if (!cancelled) {
+                                const msg = reqErr.response?.data?.errors?.value?.[0] || 'Could not verify this value. Please try again.';
+                                setAdminUniqueness(prev => ({
+                                    ...prev,
+                                    [field]: { status: 'error', message: msg, checkedValue: value },
+                                }));
+                            }
+                        }
+                    })
+            );
+        }, 400);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [f.student_id_number, f.email, f.contact_number, f.role, item.id]);
+
+    const renderAdminDuplicateStatus = (field) => {
+        const state = adminUniqueness[field];
+        if (!state || state.status === 'idle') return null;
+        if (state.status === 'available') return <p className="mt-1 text-[11px] font-semibold text-[#22C55E] flex items-center gap-1"><span>✓ Available.</span></p>;
+        if (state.status === 'checking') return <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/70">Checking availability…</p>;
+        return <p className="mt-1 text-[11px] font-semibold text-red-600">{state.message}</p>;
+    };
+
     const handleRoleChange = (newRole) => {
         setError('');
+        setAdminUniqueness({
+            student_id_number: { status: 'idle', message: '', checkedValue: '' },
+            email: { status: 'idle', message: '', checkedValue: '' },
+            contact_number: { status: 'idle', message: '', checkedValue: '' },
+        });
         setF(prev => {
             const base = {
                 ...prev,
@@ -4907,13 +5045,40 @@ function EditModal({item, kind, admin, close, done}){
                 return;
             }
             if (f.password) {
-                if (f.password.length < 8) {
-                    setError('Password must be at least 8 characters long.');
+                if (f.password.length < 8 || f.password.length > 64) {
+                    setError('Password must be between 8 and 64 characters long.');
                     return;
                 }
                 if (f.password !== f.password_confirmation) {
                     setError('Passwords do not match. Please check and try again.');
                     return;
+                }
+                // Full password strength enforcement for beneficiary and donor (mirrors user-side registration)
+                if (f.role === 'beneficiary' || f.role === 'donor') {
+                    if (!adminHasUpper || !adminHasLower) {
+                        setError('Password must contain both uppercase (A-Z) and lowercase (a-z) letters.');
+                        return;
+                    }
+                    if (!adminHasNumber) {
+                        setError('Password must contain at least one number (0-9).');
+                        return;
+                    }
+                    if (!adminHasSpecial) {
+                        setError('Password must contain at least one special character (!@#$%^&*()_-+=[]{}|:;,.?).');
+                        return;
+                    }
+                    if (!adminNoSpaces) {
+                        setError('Password cannot start or end with spaces.');
+                        return;
+                    }
+                    if (!adminNotWeak) {
+                        setError('This password is too common or easily guessable. Please choose a stronger password.');
+                        return;
+                    }
+                    if (!adminNoPersonal) {
+                        setError('Password cannot contain your name or email address.');
+                        return;
+                    }
                 }
             }
 
@@ -4939,7 +5104,7 @@ function EditModal({item, kind, admin, close, done}){
                     setError('Please enter a valid Student ID Number in the format YY-###### (e.g., 21-010956).');
                     return;
                 }
-                if (!f.email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
+                if (!f.email?.trim() || !/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(f.email.trim())) {
                     setError('Please enter a valid email address.');
                     return;
                 }
@@ -4959,6 +5124,33 @@ function EditModal({item, kind, admin, close, done}){
                 if (!f.contact_number?.trim() || !/^09[0-9]{9}$/.test(f.contact_number.trim())) {
                     setError('Contact Number must begin with 09 and contain exactly 11 digits.');
                     return;
+                }
+                // Block submission if real-time uniqueness checks are still pending or have failed
+                if (!item.id) {
+                    if (adminUniqueness.student_id_number.status === 'checking') {
+                        setError('Please wait — verifying Student ID Number availability.');
+                        return;
+                    }
+                    if (adminUniqueness.student_id_number.status === 'taken') {
+                        setError(adminUniqueness.student_id_number.message || 'This Student ID Number is already registered.');
+                        return;
+                    }
+                    if (adminUniqueness.email.status === 'checking') {
+                        setError('Please wait — verifying email address availability.');
+                        return;
+                    }
+                    if (adminUniqueness.email.status === 'taken') {
+                        setError(adminUniqueness.email.message || 'This email address is already registered.');
+                        return;
+                    }
+                    if (adminUniqueness.contact_number.status === 'checking') {
+                        setError('Please wait — verifying Contact Number availability.');
+                        return;
+                    }
+                    if (adminUniqueness.contact_number.status === 'taken') {
+                        setError(adminUniqueness.contact_number.message || 'This Contact Number is already registered.');
+                        return;
+                    }
                 }
             } else if (f.role === 'donor') {
                 if (!f.email?.trim()) {
@@ -5189,116 +5381,187 @@ function EditModal({item, kind, admin, close, done}){
                             </>
                         )}
 
-                        {/* BENEFICIARY: Rank #5 Student ID, Rank #6 Email Address, Rank #7 Dept, Rank #8 Course, Rank #9 Year Level, Rank #10 Contact */}
-                        {f.role === 'beneficiary' && (
-                            <>
-                                <div>
-                                    <label htmlFor="modal_student_id" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Student ID Number <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <input
-                                        id="modal_student_id"
-                                        type="text"
-                                        required
-                                        className="field w-full text-xs font-semibold"
-                                        placeholder="e.g. 21-010956"
-                                        value={f.student_id_number || ''}
-                                        onChange={e => setF({...f, student_id_number: e.target.value})}
-                                        maxLength={9}
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="modal_ben_email" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Email Address <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <input
-                                        id="modal_ben_email"
-                                        required
-                                        type="email"
-                                        className="field w-full text-xs font-semibold"
-                                        placeholder="e.g. student@tmc.edu.ph"
-                                        value={f.email || ''}
-                                        onChange={e => setF({...f, email: e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="modal_ben_dept" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Department <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <select
-                                        id="modal_ben_dept"
-                                        required
-                                        className="field w-full text-xs font-semibold"
-                                        value={f.department || ''}
-                                        onChange={e => setF({...f, department: e.target.value, course: '', year_level: ''})}
-                                    >
-                                        <option value="" disabled hidden>Select Department</option>
-                                        {BENEFICIARY_DEPARTMENTS.map((dept) => (
-                                            <option key={dept} value={dept}>{dept}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label htmlFor="modal_ben_course" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Course <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <select
-                                        id="modal_ben_course"
-                                        required
-                                        disabled={!f.department}
-                                        className={`field w-full text-xs font-semibold ${!f.department ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
-                                        value={f.course || ''}
-                                        onChange={e => setF({...f, course: e.target.value, year_level: ''})}
-                                    >
-                                        <option value="" disabled hidden>{f.department ? 'Select Course' : 'Select Department First'}</option>
-                                        {(BENEFICIARY_DEPARTMENT_COURSES[f.department] || []).map((crs) => (
-                                            <option key={crs} value={crs}>{crs}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label htmlFor="modal_ben_year" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Year Level <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <select
-                                        id="modal_ben_year"
-                                        required
-                                        disabled={!f.course || !f.department}
-                                        className={`field w-full text-xs font-semibold ${(!f.course || !f.department) ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
-                                        value={f.year_level || ''}
-                                        onChange={e => setF({...f, year_level: e.target.value})}
-                                    >
-                                        <option value="" disabled hidden>Select Year Level</option>
-                                        {BENEFICIARY_YEAR_LEVELS.map((yr) => (
-                                            <option key={yr} value={yr}>{yr}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label htmlFor="modal_ben_contact" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
-                                        Contact Number <span className="text-[#22C55E]">*</span>
-                                    </label>
-                                    <input
-                                        id="modal_ben_contact"
-                                        type="tel"
-                                        inputMode="numeric"
-                                        required
-                                        placeholder="09XXXXXXXXX"
-                                        minLength={11}
-                                        maxLength={11}
-                                        className="field w-full text-xs font-semibold"
-                                        value={f.contact_number || ''}
-                                        onChange={(e) => {
-                                            const cleanDigits = e.target.value.replace(/\D/g, '').slice(0, 11);
-                                            setF({...f, contact_number: cleanDigits});
-                                        }}
-                                    />
-                                    <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/70">
-                                        Enter an 11-digit Philippine mobile number.
-                                    </p>
-                                </div>
-                            </>
-                        )}
+                        {/* BENEFICIARY: Rank #5 Student ID, Rank #6 School Email, Rank #7 Dept, Rank #8 Course, Rank #9 Year Level, Rank #10 Contact */}
+                        {f.role === 'beneficiary' && (() => {
+                            const sidVal = (f.student_id_number || '').trim();
+                            const sidFormatValid = STUDENT_ID_REGEX_MODAL.test(sidVal);
+                            const sidEmpty = sidVal === '';
+                            const sidStatus = adminUniqueness.student_id_number.status;
+                            const sidAvailable = sidStatus === 'available';
+
+                            const emailVal = (f.email || '').trim();
+                            const emailFormatValid = EMAIL_REGEX_MODAL.test(emailVal) && !emailVal.includes('..');
+                            const emailEmpty = emailVal === '';
+                            const emailStatus = adminUniqueness.email.status;
+                            const emailAvailable = emailStatus === 'available';
+
+                            const contactVal = (f.contact_number || '').trim();
+                            const contactFormatValid = /^09[0-9]{9}$/.test(contactVal);
+                            const contactEmpty = contactVal === '';
+                            const contactStatus = adminUniqueness.contact_number.status;
+                            const contactAvailable = contactStatus === 'available';
+
+                            return (
+                                <>
+                                    {/* Rank #5: Student ID Number */}
+                                    <div>
+                                        <label htmlFor="modal_student_id" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                            Student ID Number <span className="text-[#22C55E]">*</span>
+                                        </label>
+                                        <input
+                                            id="modal_student_id"
+                                            type="text"
+                                            required
+                                            className={`field w-full text-xs font-semibold ${
+                                                !sidEmpty && (!sidFormatValid || sidStatus === 'taken' || sidStatus === 'error')
+                                                    ? 'border-red-500 ring-1 ring-red-500'
+                                                    : !sidEmpty && sidAvailable
+                                                        ? 'border-[#22C55E] focus:border-[#22C55E]'
+                                                        : ''
+                                            }`}
+                                            placeholder="e.g. 21-010956 (format: YY-######)"
+                                            value={f.student_id_number || ''}
+                                            onChange={e => {
+                                                const raw = e.target.value.replace(/[^\d-]/g, '').slice(0, 9);
+                                                setF({...f, student_id_number: raw});
+                                            }}
+                                            maxLength={9}
+                                        />
+                                        {!sidEmpty && !sidFormatValid && (
+                                            <p className="mt-1 text-[11px] font-semibold text-red-600">Please enter a valid Student ID Number in the format YY-###### (e.g., 21-010956).</p>
+                                        )}
+                                        {sidFormatValid && renderAdminDuplicateStatus('student_id_number')}
+                                    </div>
+
+                                    {/* Rank #6: School Email Address */}
+                                    <div>
+                                        <label htmlFor="modal_ben_email" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                            School Email Address <span className="text-[#22C55E]">*</span>
+                                        </label>
+                                        <input
+                                            id="modal_ben_email"
+                                            required
+                                            type="email"
+                                            className={`field w-full text-xs font-semibold ${
+                                                !emailEmpty && (!emailFormatValid || emailStatus === 'taken' || emailStatus === 'error')
+                                                    ? 'border-red-500 ring-1 ring-red-500'
+                                                    : !emailEmpty && emailAvailable
+                                                        ? 'border-[#22C55E] focus:border-[#22C55E]'
+                                                        : ''
+                                            }`}
+                                            placeholder="e.g. student@tmc.edu.ph"
+                                            value={f.email || ''}
+                                            onChange={e => setF({...f, email: e.target.value})}
+                                            maxLength={255}
+                                        />
+                                        {!emailEmpty && !emailFormatValid && (
+                                            <p className="mt-1 text-[11px] font-semibold text-red-600">Please enter a valid email address.</p>
+                                        )}
+                                        {emailFormatValid && renderAdminDuplicateStatus('email')}
+                                    </div>
+
+                                    {/* Rank #7: Department */}
+                                    <div>
+                                        <label htmlFor="modal_ben_dept" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                            Department <span className="text-[#22C55E]">*</span>
+                                        </label>
+                                        <select
+                                            id="modal_ben_dept"
+                                            required
+                                            className="field w-full text-xs font-semibold"
+                                            value={f.department || ''}
+                                            onChange={e => setF({...f, department: e.target.value, course: '', year_level: ''})}
+                                        >
+                                            <option value="" disabled hidden>Select Department</option>
+                                            {BENEFICIARY_DEPARTMENTS.map((dept) => (
+                                                <option key={dept} value={dept}>{dept}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Rank #8: Course (cascades from Department) */}
+                                    <div>
+                                        <label htmlFor="modal_ben_course" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                            Course <span className="text-[#22C55E]">*</span>
+                                        </label>
+                                        <select
+                                            id="modal_ben_course"
+                                            required
+                                            disabled={!f.department}
+                                            className={`field w-full text-xs font-semibold ${!f.department ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                            value={f.course || ''}
+                                            onChange={e => setF({...f, course: e.target.value, year_level: ''})}
+                                        >
+                                            <option value="" disabled hidden>{f.department ? 'Select Course' : 'Select Department First'}</option>
+                                            {(BENEFICIARY_DEPARTMENT_COURSES[f.department] || []).map((crs) => (
+                                                <option key={crs} value={crs}>{crs}</option>
+                                            ))}
+                                        </select>
+                                        {!f.department && (
+                                            <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/60">Select a Department first to unlock Course.</p>
+                                        )}
+                                    </div>
+
+                                    {/* Rank #9: Year Level (cascades from Course) */}
+                                    <div>
+                                        <label htmlFor="modal_ben_year" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                            Year Level <span className="text-[#22C55E]">*</span>
+                                        </label>
+                                        <select
+                                            id="modal_ben_year"
+                                            required
+                                            disabled={!f.course || !f.department}
+                                            className={`field w-full text-xs font-semibold ${(!f.course || !f.department) ? 'opacity-60 bg-gray-50 cursor-not-allowed' : ''}`}
+                                            value={f.year_level || ''}
+                                            onChange={e => setF({...f, year_level: e.target.value})}
+                                        >
+                                            <option value="" disabled hidden>Select Year Level</option>
+                                            {BENEFICIARY_YEAR_LEVELS.map((yr) => (
+                                                <option key={yr} value={yr}>{yr}</option>
+                                            ))}
+                                        </select>
+                                        {(!f.course || !f.department) && f.department && (
+                                            <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/60">Select a Course first to unlock Year Level.</p>
+                                        )}
+                                    </div>
+
+                                    {/* Rank #10: Contact Number */}
+                                    <div>
+                                        <label htmlFor="modal_ben_contact" className="block text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-1">
+                                            Contact Number <span className="text-[#22C55E]">*</span>
+                                        </label>
+                                        <input
+                                            id="modal_ben_contact"
+                                            type="tel"
+                                            inputMode="numeric"
+                                            required
+                                            placeholder="09XXXXXXXXX"
+                                            minLength={11}
+                                            maxLength={11}
+                                            className={`field w-full text-xs font-semibold ${
+                                                !contactEmpty && (!contactFormatValid || contactStatus === 'taken' || contactStatus === 'error')
+                                                    ? 'border-red-500 ring-1 ring-red-500'
+                                                    : !contactEmpty && contactAvailable
+                                                        ? 'border-[#22C55E] focus:border-[#22C55E]'
+                                                        : ''
+                                            }`}
+                                            value={f.contact_number || ''}
+                                            onChange={(e) => {
+                                                const cleanDigits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                                                setF({...f, contact_number: cleanDigits});
+                                            }}
+                                        />
+                                        <p className="mt-1 text-[11px] font-semibold text-[#2563EB]/70">
+                                            Format: 09XXXXXXXXX (11-digit Philippine mobile number)
+                                        </p>
+                                        {!contactEmpty && !contactFormatValid && (
+                                            <p className="mt-1 text-[11px] font-semibold text-red-600">Contact Number must begin with 09 and contain exactly 11 digits.</p>
+                                        )}
+                                        {contactFormatValid && renderAdminDuplicateStatus('contact_number')}
+                                    </div>
+                                </>
+                            );
+                        })()}
 
                         {/* DONOR: Rank #5 Email, Rank #6 Country, Rank #7 Contact, Rank #8 Addr1, Rank #9 State, Rank #10 City, Rank #11 District, Rank #12 Postal, Rank #13 ID Type, Rank #14 ID Num */}
                         {f.role === 'donor' && (
@@ -5481,8 +5744,9 @@ function EditModal({item, kind, admin, close, done}){
                                     type={showPassword ? 'text' : 'password'}
                                     minLength={8}
                                     maxLength={64}
+                                    autoComplete="new-password"
                                     className="field w-full text-xs font-semibold pr-10"
-                                    placeholder={item.id ? 'Leave empty to keep existing password' : 'Min. 8 characters'}
+                                    placeholder={item.id ? 'Leave empty to keep existing password' : (f.role === 'beneficiary' || f.role === 'donor') ? 'Create a strong password' : 'Min. 8 characters'}
                                     value={f.password || ''}
                                     onChange={e => setF({...f, password: e.target.value})}
                                 />
@@ -5505,6 +5769,47 @@ function EditModal({item, kind, admin, close, done}){
                                     )}
                                 </button>
                             </div>
+
+                            {/* Password Strength Meter + Requirements — only for Beneficiary and Donor */}
+                            {(f.role === 'beneficiary' || f.role === 'donor') && adminPwd && (
+                                <div className="mt-2 space-y-1">
+                                    <div className="flex justify-between text-[11px] font-bold text-[#2563EB]">
+                                        <span>Password Strength:</span>
+                                        <span className={`font-extrabold ${adminPwdScore >= 3 ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                            {adminStrengthLabel}
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 w-full rounded-full border border-[#2563EB] bg-white overflow-hidden flex">
+                                        <div
+                                            className={`h-full transition-all duration-300 ${adminPwdScore >= 3 ? 'bg-[#22C55E]' : 'bg-[#2563EB]'}`}
+                                            style={{ width: `${(adminPwdScore / 4) * 100}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                            {(f.role === 'beneficiary' || f.role === 'donor') && (
+                                <div className="mt-2.5 rounded-xl border border-[#2563EB] bg-white p-3 space-y-1.5 text-xs">
+                                    <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#2563EB] mb-1">
+                                        Password Security Requirements:
+                                    </p>
+                                    <div className={`flex items-center gap-1.5 text-[11px] font-bold ${adminHasLength ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                        <span className="font-black">{adminHasLength ? '✓' : '•'}</span>
+                                        <span>8 to 64 characters in length</span>
+                                    </div>
+                                    <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(adminHasUpper && adminHasLower) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                        <span className="font-black">{(adminHasUpper && adminHasLower) ? '✓' : '•'}</span>
+                                        <span>Contains uppercase (A-Z) &amp; lowercase (a-z) letters</span>
+                                    </div>
+                                    <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(adminHasNumber && adminHasSpecial) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                        <span className="font-black">{(adminHasNumber && adminHasSpecial) ? '✓' : '•'}</span>
+                                        <span>Contains numbers (0-9) &amp; special characters (!@#$...)</span>
+                                    </div>
+                                    <div className={`flex items-center gap-1.5 text-[11px] font-bold ${(adminNoSpaces && adminNotWeak && adminNoPersonal) ? 'text-[#22C55E]' : 'text-[#2563EB]'}`}>
+                                        <span className="font-black">{(adminNoSpaces && adminNotWeak && adminNoPersonal) ? '✓' : '•'}</span>
+                                        <span>No personal info (name/email), spaces, or common passwords</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div>
@@ -5518,6 +5823,7 @@ function EditModal({item, kind, admin, close, done}){
                                     type={showConfirmPassword ? 'text' : 'password'}
                                     minLength={8}
                                     maxLength={64}
+                                    autoComplete="new-password"
                                     className="field w-full text-xs font-semibold pr-10"
                                     placeholder="Re-enter password"
                                     value={f.password_confirmation || ''}
@@ -5542,13 +5848,12 @@ function EditModal({item, kind, admin, close, done}){
                                     )}
                                 </button>
                             </div>
+                            {f.password_confirmation && (
+                                <div className={`mt-1 flex items-center gap-1.5 text-[11px] font-bold ${adminMatchesConfirm ? 'text-[#22C55E]' : 'text-red-500'}`}>
+                                    <span className="font-black">{adminMatchesConfirm ? '✓ Passwords match' : '✕ Passwords do not match.'}</span>
+                                </div>
+                            )}
                         </div>
-
-                        {f.password && f.password_confirmation && (
-                            <p className={`text-[11px] font-bold ${f.password === f.password_confirmation ? 'text-[#22C55E]' : 'text-red-500'}`}>
-                                {f.password === f.password_confirmation ? '✓ Passwords match' : '✕ Passwords do not match'}
-                            </p>
-                        )}
                     </div>
                 ) : (
                     Object.entries(f).filter(([k]) => !['id','status','created_at','beneficiary','donor','profile_photo_url','profile_photo_path','email_verified_at','updated_at'].includes(k)).map(([k, v]) => (typeof v === 'string' || typeof v === 'number') && (

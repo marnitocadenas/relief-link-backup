@@ -3,9 +3,9 @@ import defaultTheme from 'tailwindcss/defaultTheme';
 /** @type {import('tailwindcss').Config} */
 export default {
     content: [
-        './resources/views/app.blade.php',
-        './resources/js/Pages/App.jsx',
-        './resources/js/Components/UI.jsx',
+        './src/**/*.{js,jsx}',
+        './css/**/*.css',
+        '../backend/resources/**/*.blade.php',
     ],
 
     theme: {

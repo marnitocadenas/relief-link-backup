@@ -1,4 +1,4 @@
-import '../css/app.css';
+import '../../css/app.css';
 import { createRoot } from 'react-dom/client';
 import { Component } from 'react';
 import { BrowserRouter } from 'react-router-dom';

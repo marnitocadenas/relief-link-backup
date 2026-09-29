@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use App\Http\Requests\Api\RegisterRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 class AdminController extends Controller
@@ -107,13 +108,58 @@ class AdminController extends Controller
         $isBeneficiary = $role === 'beneficiary';
         $isDonor = $role === 'donor';
 
+        // Use full strong password rules for beneficiary and donor (same as user-side RegisterRequest),
+        // and a simpler rule for admin/staff (internal accounts).
+        $strongPasswordRule = ($isBeneficiary || $isDonor)
+            ? [
+                'required',
+                'string',
+                'confirmed',
+                Password::min(8)
+                    ->max(64)
+                    ->letters()
+                    ->mixedCase()
+                    ->numbers()
+                    ->symbols(),
+                function ($attribute, $value, $fail) use ($r) {
+                    if (!preg_match('/[!@#$%^&*()_\-+=\[\]{}|:;,.?]/', $value)) {
+                        $fail('The password must contain an allowed special character (!@#$%^&*()_-+=[]{}|:;,.?).');
+                        return;
+                    }
+                    if (trim($value) !== $value) {
+                        $fail('The password cannot start or end with spaces.');
+                        return;
+                    }
+                    $weakPasswords = ['password', '12345678', 'qwerty', 'admin', 'welcome', '123456', 'password123', 'relieflink', 'letmein'];
+                    if (in_array(strtolower($value), $weakPasswords, true)) {
+                        $fail('This password is too common or easily guessable. Please choose a stronger password.');
+                        return;
+                    }
+                    $firstName = strtolower(trim((string) $r->input('first_name', '')));
+                    $lastName = strtolower(trim((string) $r->input('last_name', '')));
+                    $emailInput = strtolower(trim((string) ($r->input('email', '') ?: $r->input('school_email', ''))));
+                    $emailUsername = explode('@', $emailInput)[0] ?? '';
+                    foreach (array_filter([$firstName, $lastName]) as $part) {
+                        if (strlen($part) >= 3 && stripos($value, $part) !== false) {
+                            $fail('The password cannot contain your name.');
+                            return;
+                        }
+                    }
+                    if (!empty($emailUsername) && strlen($emailUsername) >= 3 && stripos($value, $emailUsername) !== false) {
+                        $fail('The password cannot contain your email address.');
+                        return;
+                    }
+                },
+            ]
+            : 'required|string|min:8|confirmed';
+
         $rules = [
             'role' => 'required|in:admin,staff,beneficiary,donor',
             'account_type' => 'required|in:admin,staff,beneficiary,donor',
             'first_name' => 'required|string|max:100',
             'middle_name' => 'nullable|string|max:100',
             'last_name' => 'required|string|max:100',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => $strongPasswordRule,
         ];
 
         if ($isAdminOrStaff) {
@@ -179,6 +225,12 @@ class AdminController extends Controller
             'valid_id_number.unique' => 'This Valid ID Number is already taken.',
             'password.required' => 'Password is required.',
             'password.confirmed' => 'Passwords do not match.',
+            'password.min' => 'The password must be at least 8 characters long.',
+            'password.max' => 'The password cannot exceed 64 characters.',
+            'password.mixed' => 'The password must contain both uppercase and lowercase letters.',
+            'password.letters' => 'The password must contain at least one letter.',
+            'password.numbers' => 'The password must contain at least one number.',
+            'password.symbols' => 'The password must contain at least one special character (!@#$%^&*()_-+=[]{}|:;,.?).',
         ];
 
         $d = $r->validate($rules, $messages);

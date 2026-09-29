@@ -3,9 +3,14 @@ import laravel from 'laravel-vite-plugin';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+    root: '.',
+    envDir: '..',
     plugins: [
         laravel({
-            input: 'resources/js/app.jsx',
+            publicDirectory: '../backend/public',
+            buildDirectory: 'build',
+            hotFile: '../backend/public/hot',
+            input: 'src/js/app.jsx',
             refresh: true,
         }),
         react(),

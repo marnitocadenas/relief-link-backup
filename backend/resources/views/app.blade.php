@@ -18,7 +18,7 @@
 
         <!-- Scripts -->
         @viteReactRefresh
-        @vite(['resources/js/app.jsx'])
+        @vite(['src/js/app.jsx'])
     </head>
     <body class="font-sans antialiased">
         <div id="app"></div>
